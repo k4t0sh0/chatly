@@ -118,32 +118,68 @@ const OfficialAvatarIcon = () => (
 );
 
 // ⬇️ ここに配置（MessagingApp関数の前）
+// 画像キャッシュマネージャー
+const imageCache = new Map();
+
+const preloadImage = (src) => {
+  return new Promise((resolve, reject) => {
+    // キャッシュに既にある場合
+    if (imageCache.has(src)) {
+      resolve(src);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      imageCache.set(src, true);
+      resolve(src);
+    };
+    img.onerror = () => {
+      reject(new Error(`Failed to load image: ${src}`));
+    };
+    img.src = src;
+  });
+};
+
+// 改良版 AvatarImage コンポーネント
 const AvatarImage = ({ src, alt, fallbackText, size = 'w-10 h-10', bgColor = 'bg-blue-500' }) => {
   const [imageError, setImageError] = React.useState(false);
   const [imageLoaded, setImageLoaded] = React.useState(false);
+  const [imageSrc, setImageSrc] = React.useState(null);
 
   React.useEffect(() => {
+    if (!src || !src.startsWith('http')) {
+      setImageError(true);
+      return;
+    }
+
     setImageError(false);
     setImageLoaded(false);
+
+    // 画像をプリロード
+    preloadImage(src)
+      .then(() => {
+        setImageSrc(src);
+        setImageLoaded(true);
+      })
+      .catch((err) => {
+        console.error('画像プリロードエラー:', err);
+        setImageError(true);
+      });
   }, [src]);
 
-  const shouldShowImage = src && src.startsWith('http') && !imageError;
+  const shouldShowImage = imageSrc && !imageError && imageLoaded;
 
   return (
     <>
       {shouldShowImage && (
         <img
-          src={src}
+          src={imageSrc}
           alt={alt}
-          className={`${size} rounded-full object-cover ${!imageLoaded ? 'hidden' : ''}`}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => {
-            console.log('画像読み込みエラー:', src);
-            setImageError(true);
-          }}
+          className={`${size} rounded-full object-cover`}
         />
       )}
-      {(!shouldShowImage || !imageLoaded) && (
+      {!shouldShowImage && (
         <div className={`${size} rounded-full ${bgColor} flex items-center justify-center text-white font-bold text-sm`}>
           {fallbackText}
         </div>
@@ -424,7 +460,7 @@ function MessagingApp() {
     const file = e.target.files[0];
     if (!file) return;
 
-    // ファイルサイズチェック（5MB以下）
+    // ファイルサイズチェック(5MB以下)
     if (file.size > 5 * 1024 * 1024) {
       alert('画像サイズは5MB以下にしてください');
       return;
@@ -440,41 +476,48 @@ function MessagingApp() {
     setUploadingAvatar(true);
 
     try {
-      console.log('画像をBase64に変換中...');
-      const base64Image = await imageToBase64(file);
+      console.log('📤 アップロード開始...');
 
-      console.log('アップロード開始...');
+      // ✅ FormDataを使用（Base64変換なし = 高速）
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userId', user.uid);
+
       const response = await fetch(WORKER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: base64Image,
-          fileName: file.name,
-          apiKey: API_KEY,
-        }),
+        headers: {
+          'X-API-Key': API_KEY
+          // Content-Typeは指定しない（自動設定される）
+        },
+        body: formData
       });
 
-      console.log('レスポンス:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'アップロードに失敗しました');
-      }
+      console.log('📥 レスポンス受信:', response.status);
 
       const data = await response.json();
-      console.log('アップロード成功:', data);
+      console.log('📦 受取データ:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'アップロードに失敗しました');
+      }
+
+      // URLを取得
+      const finalUrl = data.url || data.downloadUrl;
+      if (!finalUrl) {
+        throw new Error('画像URLが返ってきませんでした');
+      }
 
       // FirebaseにURLを保存
       await database.ref(`users/${user.uid}`).update({
-        photoURL: data.url,
+        photoURL: finalUrl,
         updatedAt: Date.now()
       });
 
-      setAvatarUrl(data.url);
-      alert('アイコンを更新しました！');
+      setAvatarUrl(finalUrl);
+      alert('✅ アイコンを更新しました！');
 
     } catch (error) {
-      console.error('アップロードエラー:', error);
+      console.error('❌ アップロードエラー:', error);
       alert('アップロードに失敗しました: ' + error.message);
     }
 
@@ -502,54 +545,47 @@ function MessagingApp() {
     setUploadingGroupAvatar(true);
 
     try {
-      console.log('グループ画像をBase64に変換中...');
-      const base64Image = await imageToBase64(file);
+      console.log('📤 グループアイコンアップロード開始...');
 
-      console.log('アップロード開始...');
+      // ✅ FormDataを使用（Base64変換なし = 高速）
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userId', `group_${selectedGroup.groupId}`);
+
       const response = await fetch(WORKER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: base64Image,
-          fileName: `group_${selectedGroup.groupId}_${file.name}`,
-          apiKey: API_KEY,
-        }),
+        headers: {
+          'X-API-Key': API_KEY
+        },
+        body: formData
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'アップロードに失敗しました');
-      }
+      console.log('📥 レスポンス受信:', response.status);
 
       const data = await response.json();
-      console.log('アップロード成功:', data);
+      console.log('📦 受取データ:', data);
 
-      // Firebaseにグループ画像URLを保存
+      if (!response.ok) {
+        throw new Error(data.error || 'アップロードに失敗しました');
+      }
+
+      const finalUrl = data.url || data.downloadUrl;
+      if (!finalUrl) {
+        throw new Error('画像URLが返ってきませんでした');
+      }
+
+      // Firebaseに保存
       await database.ref(`groups/${selectedGroup.groupId}`).update({
-        groupPhotoURL: data.url,
+        groupImage: finalUrl,
         updatedAt: Date.now()
       });
 
-      // ⬇️ デバッグ用ログを追加
-      console.log('=== デバッグ情報 ===');
-      console.log('アップロードURL:', data.url);
-      console.log('グループID:', selectedGroup.groupId);
-      console.log('現在のselectedGroup:', selectedGroup);
-
-      // selectedGroupの状態も更新
-      setSelectedGroup(prev => {
-        const updated = {
-          ...prev,
-          groupPhotoURL: data.url
-        };
-        console.log('更新後のselectedGroup:', updated);
-        return updated;
-      });
-
-      alert('グループアイコンを更新しました!');
+      alert('✅ グループアイコンを更新しました！');
+      setShowGroupSettings(false);
+      loadGroups();
 
     } catch (error) {
-      console.error('アップロードエラー:', error);
+      console.error('❌ アップロードエラー:', error);
       alert('アップロードに失敗しました: ' + error.message);
     }
 
@@ -862,6 +898,7 @@ function MessagingApp() {
           if (snapshot.exists()) {
             const userData = snapshot.val();
             console.log('ユーザーデータ:', userData); // デバッグ用
+            console.log('photoURL:', userData.photoURL); // ← 追加
             setUsername(userData.username);
             setAvatarUrl(userData.photoURL || '');
             loadFriends(user.uid);
@@ -3154,10 +3191,10 @@ function MessagingApp() {
                     {!selectedGroup && selectedFriend.isOfficial && <OfficialBadgeIcon />}
                   </h2>
                   <p className={`text-sm ${selectedGroup
-                      ? 'text-green-600 font-semibold'
-                      : (selectedFriend.isOfficial || recipientStatus.online)
-                        ? 'text-green-600 font-semibold' // ここに指定のクラスを配置
-                        : 'text-gray-400'
+                    ? 'text-green-600 font-semibold'
+                    : (selectedFriend.isOfficial || recipientStatus.online)
+                      ? 'text-green-600 font-semibold' // ここに指定のクラスを配置
+                      : 'text-gray-400'
                     }`}>
                     {selectedGroup
                       ? `${Object.keys(selectedGroup.members || {}).length}人のメンバー`
@@ -3296,7 +3333,7 @@ function MessagingApp() {
 
                       {isMe && !isDeleted && (
                         <AvatarImage
-                          src={avatarUrl}
+                          src={user?.photoURL || avatarUrl}
                           alt={username}
                           fallbackText={username.charAt(0).toUpperCase()}
                           size="w-8 h-8"
