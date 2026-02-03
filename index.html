@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatly ver.28</title>
+
+  <!-- React -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <!-- ↓この1行を追加 -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js"></script>
+
+  <!-- カスタムCSS -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Recapcha -->
+  <script src="https://www.google.com/recaptcha/api.js?render=6Lc9MV4sAAAAAO-NtJmp8jwYb5onCNmazmdYOOoZ"></script>
+
+  <link rel="icon" href="image.ico">
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <!-- JavaScriptファイル -->
+  <script type="text/babel" src="script.js"></script>
+</body>
+
+</html>
