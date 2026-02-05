@@ -3,6 +3,7 @@ const { useState, useEffect, useRef } = React;
 // Cloudflare WorkerのURL
 const WORKER_URL = 'https://icon-upload-proxy.katokato-s-js.workers.dev'; // ⬅️ ステップ3で取得したURL
 const API_KEY = 'k4t0sh0-Chatly-app-icon-upload-function-api-8A7EscFtnwiYXMEAccRrs7SoALy75s'; // ⬅️ ステップ2で設定したAPIキー
+const RECAPTCHA_SITE_KEY = '6LeAUmEsAAAAAPejhBfTCcEUpH6YsMtYha1fIGam'; // ← 追加
 
 // ★ 公式アカウントの定義
 const OFFICIAL_ACCOUNT = {
@@ -37,20 +38,7 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
-// script.js 43行目あたり
-try {
-  const appCheck = firebase.appCheck();
 
-  // localhostではApp Checkをスキップ
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    appCheck.activate(
-      new firebase.appCheck.ReCaptchaEnterpriseProvider('6Lc9MV4sAAAAAO-NtJmp8jwYb5onCNmazmdYOOoZ'),
-      true
-    );
-  }
-} catch (error) {
-  // エラーを無視
-}
 
 const auth = firebase.auth();
 const database = firebase.database();
@@ -360,6 +348,10 @@ function MessagingApp() {
 
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [recaptchaVerified, setRecaptchaVerified] = useState(false); // ← 追加
+  const recaptchaRef = useRef(null); // reCAPTCHA用のref
+  const recaptchaWidgetId = useRef(null); // reCAPTCHA Widget ID
+  const [rememberMe, setRememberMe] = useState(false); // ← ログイン状態保持用
 
   // 既存のstateに追加
   const [allUsers, setAllUsers] = useState([]); // 全ユーザー一覧
@@ -721,10 +713,60 @@ function MessagingApp() {
   useEffect(() => {
     const savedSound = localStorage.getItem('customNotificationSound');
     if (savedSound) {
-      // ファイル名を復元（必要に応じて）
+      // ファイル名を復元(必要に応じて)
       setCustomSoundFile('カスタム音源');
     }
   }, []);
+
+  // reCAPTCHAの初期化
+  useEffect(() => {
+    if (user) return; // ログイン済みの場合は何もしない
+
+    const initRecaptcha = () => {
+      if (window.grecaptcha && window.grecaptcha.render && recaptchaRef.current) {
+        try {
+          if (recaptchaWidgetId.current !== null) {
+            window.grecaptcha.reset(recaptchaWidgetId.current);
+            setRecaptchaVerified(false);
+          } else {
+            recaptchaWidgetId.current = window.grecaptcha.render(recaptchaRef.current, {
+              sitekey: RECAPTCHA_SITE_KEY,
+              size: 'normal', // 画像認証パネルを使用
+              callback: (token) => {
+                console.log('reCAPTCHA検証成功');
+                setRecaptchaVerified(true);
+              },
+              'expired-callback': () => {
+                console.log('reCAPTCHA有効期限切れ');
+                setRecaptchaVerified(false);
+              },
+              'error-callback': () => {
+                console.log('reCAPTCHAエラー');
+                setRecaptchaVerified(false);
+              }
+            });
+            console.log('reCAPTCHA初期化完了 Widget ID:', recaptchaWidgetId.current);
+          }
+        } catch (error) {
+          console.error('reCAPTCHA初期化エラー:', error);
+        }
+      }
+    };
+
+    if (window.grecaptcha && window.grecaptcha.render) {
+      initRecaptcha();
+    } else {
+      // reCAPTCHAスクリプトの読み込みを待つ
+      const checkInterval = setInterval(() => {
+        if (window.grecaptcha && window.grecaptcha.render) {
+          clearInterval(checkInterval);
+          initRecaptcha();
+        }
+      }, 100);
+
+      return () => clearInterval(checkInterval);
+    }
+  }, [user]);
 
   // グループ名変更関数
   const handleGroupNameChange = async () => {
@@ -1363,6 +1405,24 @@ function MessagingApp() {
     }
   }, [user]);
 
+  // reCAPTCHA v2のコールバック関数（グローバルに定義）
+  React.useEffect(() => {
+    window.onRecaptchaSuccess = function (token) {
+      console.log('✅ reCAPTCHA検証成功');
+      setRecaptchaVerified(true);
+    };
+
+    window.onRecaptchaExpired = function () {
+      console.log('⚠️ reCAPTCHA有効期限切れ');
+      setRecaptchaVerified(false);
+    };
+
+    return () => {
+      delete window.onRecaptchaSuccess;
+      delete window.onRecaptchaExpired;
+    };
+  }, []);
+
   // タブのアクティブ状態を監視
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -1858,24 +1918,46 @@ function MessagingApp() {
 
   const handleSignUp = async () => {
     if (!email || !password || !username) {
-      setError('すべての項目を入力してください');
+      setError('すべてのフィールドを入力してください');
       return;
     }
+
+    // ✅ reCAPTCHA検証
+    const recaptchaResponse = recaptchaWidgetId.current !== null 
+      ? window.grecaptcha.getResponse(recaptchaWidgetId.current) 
+      : '';
+    
+    if (!recaptchaResponse) {
+      setError('reCAPTCHAを完了してください');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
+      // ✅ セッションベース
+      await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
       const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-      await database.ref(`users/${userCredential.user.uid}`).set({
+      const user = userCredential.user;
+
+      await database.ref(`users/${user.uid}`).set({
         username: username,
         email: email,
+        photoURL: '',
         createdAt: Date.now()
       });
-      await database.ref(`usernames/${username}`).set({
-        uid: userCredential.user.uid,
-        username: username
-      });
+
+      // 成功後リセット
+      if (recaptchaWidgetId.current !== null) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+        setRecaptchaVerified(false);
+      }
     } catch (err) {
-      setError(err.message);
+      setError('アカウント作成に失敗しました: ' + err.message);
+      if (recaptchaWidgetId.current !== null) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+        setRecaptchaVerified(false);
+      }
     }
     setLoading(false);
   };
@@ -1982,12 +2064,43 @@ function MessagingApp() {
       setError('メールアドレスとパスワードを入力してください');
       return;
     }
+
+    // ✅ reCAPTCHA検証
+    const recaptchaResponse = recaptchaWidgetId.current !== null 
+      ? window.grecaptcha.getResponse(recaptchaWidgetId.current) 
+      : '';
+    
+    if (!recaptchaResponse) {
+      setError('reCAPTCHAを完了してください');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
+      // ✅ チェックボックスの状態に応じて永続性を設定
+      if (rememberMe) {
+        // ログイン状態を保持（ブラウザを閉じても保持）
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      } else {
+        // タブを閉じるとログアウト
+        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+      }
+      
       await auth.signInWithEmailAndPassword(email, password);
+
+      // ログイン成功後、reCAPTCHAをリセット
+      if (recaptchaWidgetId.current !== null) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+        setRecaptchaVerified(false);
+      }
     } catch (err) {
       setError('ログインに失敗しました: ' + err.message);
+      // エラー時もreCAPTCHAをリセット
+      if (recaptchaWidgetId.current !== null) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+        setRecaptchaVerified(false);
+      }
     }
     setLoading(false);
   };
@@ -2500,10 +2613,41 @@ function MessagingApp() {
             className="w-full border border-gray-300 rounded-lg px-4 py-3 mb-4 focus:outline-none focus:border-green-500"
           />
 
+          {/* ✅ reCAPTCHA v2 */}
+          <div className="flex flex-col items-center mb-4">
+            <div ref={recaptchaRef}></div>
+            {!recaptchaVerified && (
+              <p className="text-xs text-gray-500 mt-2">
+                ✓ ロボットでないことを確認してください
+              </p>
+            )}
+            {recaptchaVerified && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ 認証完了
+              </p>
+            )}
+          </div>
+
+          {/* ✅ ログイン状態を保持するチェックボックス（ログイン時のみ） */}
+          {!isSignUp && (
+            <div className="flex items-center mb-4">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 text-green-500 border-gray-300 rounded focus:ring-green-500"
+              />
+              <label htmlFor="rememberMe" className="ml-2 text-sm text-gray-700 cursor-pointer">
+                ログイン状態を保持する
+              </label>
+            </div>
+          )}
+
           <button
             onClick={isSignUp ? handleSignUp : handleLogin}
-            disabled={loading}
-            className="w-full bg-green-500 text-white rounded-lg py-3 font-semibold hover:bg-green-600 transition-colors disabled:bg-gray-300 mb-3"
+            disabled={loading || !recaptchaVerified}
+            className="w-full bg-green-500 text-white rounded-lg py-3 font-semibold hover:bg-green-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed mb-3"
           >
             {loading ? '処理中...' : (isSignUp ? 'アカウント作成' : 'ログイン')}
           </button>
@@ -2512,10 +2656,15 @@ function MessagingApp() {
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError('');
+              // reCAPTCHAをリセット
+              if (recaptchaWidgetId.current !== null) {
+                window.grecaptcha.reset(recaptchaWidgetId.current);
+                setRecaptchaVerified(false);
+              }
             }}
             className="w-full text-green-600 hover:text-green-700 text-sm"
           >
-            {isSignUp ? 'すでにアカウントをお持ちですか？ログイン' : 'アカウントを作成'}
+            {isSignUp ? 'すでにアカウントをお持ちですか?ログイン' : 'アカウントを作成'}
           </button>
         </div>
       </div>

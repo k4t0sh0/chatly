@@ -24,14 +24,17 @@
   <!-- カスタムCSS -->
   <link rel="stylesheet" href="style.css">
 
-  <!-- Recapcha -->
-  <script src="https://www.google.com/recaptcha/api.js?render=6Lc9MV4sAAAAAO-NtJmp8jwYb5onCNmazmdYOOoZ"></script>
+  <!-- ✅ reCAPTCHA v2スクリプトを追加 -->
+  <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
 
   <link rel="icon" href="image.ico">
 </head>
 
 <body>
   <div id="root"></div>
+
+  <!-- reCAPTCHA v2のコンテナ -->
+  <div id="recaptcha-container"></div>
 
   <!-- JavaScriptファイル -->
   <script type="text/babel" src="script.js"></script>
