@@ -3,7 +3,7 @@ const { useState, useEffect, useRef } = React;
 // Cloudflare WorkerのURL
 const WORKER_URL = 'https://icon-upload-proxy.katokato-s-js.workers.dev'; // ⬅️ ステップ3で取得したURL
 const API_KEY = 'k4t0sh0-Chatly-app-icon-upload-function-api-8A7EscFtnwiYXMEAccRrs7SoALy75s'; // ⬅️ ステップ2で設定したAPIキー
-const RECAPTCHA_SITE_KEY = '6LeAUmEsAAAAAPejhBfTCcEUpH6YsMtYha1fIGam'; // ← 追加
+const RECAPTCHA_SITE_KEY = '6LdZy2IsAAAAAIVyyVYd2NgzzVptaEbX39eAld6_'; // ⬅️ reCAPTCHA v3のサイトキーに変更してください
 
 // ★ 公式アカウントの定義
 const OFFICIAL_ACCOUNT = {
@@ -104,6 +104,34 @@ const OfficialAvatarIcon = () => (
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="white" />
   </svg>
 );
+
+// 📎 画像添付アイコン
+const ImageIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+    <polyline points="21 15 16 10 5 21"></polyline>
+  </svg>
+);
+
+// ❌ 閉じるアイコン
+const XIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"></line>
+    <line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>
+);
+
+// 🔍 拡大アイコン
+const ZoomInIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    <line x1="11" y1="8" x2="11" y2="14"></line>
+    <line x1="8" y1="11" x2="14" y2="11"></line>
+  </svg>
+);
+
 
 // ⬇️ ここに配置（MessagingApp関数の前）
 // 画像キャッシュマネージャー
@@ -348,9 +376,7 @@ function MessagingApp() {
 
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [recaptchaVerified, setRecaptchaVerified] = useState(false); // ← 追加
-  const recaptchaRef = useRef(null); // reCAPTCHA用のref
-  const recaptchaWidgetId = useRef(null); // reCAPTCHA Widget ID
+  const [recaptchaVerified, setRecaptchaVerified] = useState(false); // reCAPTCHA v3用
   const [rememberMe, setRememberMe] = useState(false); // ← ログイン状態保持用
 
   // 既存のstateに追加
@@ -368,6 +394,13 @@ function MessagingApp() {
 
   // グループ画像アップロード用state
   const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
+
+  // 画像送信用のstate
+  const [selectedImage, setSelectedImage] = useState(null); // 選択中の画像
+  const [imagePreview, setImagePreview] = useState(null); // プレビューURL
+  const [uploadingImage, setUploadingImage] = useState(false); // アップロード中
+  const [expandedImage, setExpandedImage] = useState(null); // 拡大表示中の画像
+  const imageInputRef = useRef(null); // 画像input要素の参照
 
   // 77行目から
   const emojiList = [
@@ -584,6 +617,166 @@ function MessagingApp() {
     setUploadingGroupAvatar(false);
   };
 
+  // 画像選択処理
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // ファイルサイズチェック(3MB以下)
+    if (file.size > 3 * 1024 * 1024) {
+      alert('❌ 画像サイズは3MB以下にしてください');
+      e.target.value = ''; // リセット
+      return;
+    }
+
+    // ファイル形式チェック
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('❌ JPEG、PNG、WebP、GIF形式の画像のみ対応しています');
+      e.target.value = ''; // リセット
+      return;
+    }
+
+    // プレビュー用のURLを生成
+    const previewUrl = URL.createObjectURL(file);
+    setSelectedImage(file);
+    setImagePreview(previewUrl);
+  };
+
+  // 画像選択キャンセル
+  const handleCancelImage = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview); // メモリ解放
+    }
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''; // input要素をリセット
+    }
+  };
+
+  // 画像アップロード＆送信（個人チャット用）
+  const handleSendImage = async () => {
+    if (!selectedImage || !selectedFriend) return;
+
+    setUploadingImage(true);
+
+    try {
+      console.log('📤 画像アップロード開始...');
+
+      // FormDataで送信
+      const formData = new FormData();
+      formData.append('file', selectedImage);
+      formData.append('userId', `chat_${user.uid}`);
+
+      const response = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY
+        },
+        body: formData
+      });
+
+      console.log('📥 レスポンス受信:', response.status);
+
+      const data = await response.json();
+      console.log('📦 受取データ:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'アップロードに失敗しました');
+      }
+
+      // URLを取得
+      const imageUrl = data.url || data.downloadUrl;
+      if (!imageUrl) {
+        throw new Error('画像URLが返ってきませんでした');
+      }
+
+      // Firebaseにメッセージとして保存
+      const chatKey = [user.uid, selectedFriend.uid].sort().join('_');
+      const messagesRef = database.ref(`chats/${chatKey}/messages`);
+
+      await messagesRef.push({
+        type: 'image',
+        imageUrl: imageUrl,
+        sender: user.uid,
+        senderName: username,
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+        read: false
+      });
+
+      console.log('✅ 画像メッセージ送信完了');
+
+      // プレビューをクリア
+      handleCancelImage();
+
+    } catch (error) {
+      console.error('❌ 画像送信エラー:', error);
+      alert('画像の送信に失敗しました: ' + error.message);
+    }
+
+    setUploadingImage(false);
+  };
+
+  // 画像アップロード＆送信（グループチャット用）
+  const handleSendGroupImage = async () => {
+    if (!selectedImage || !selectedGroup) return;
+
+    setUploadingImage(true);
+
+    try {
+      console.log('📤 グループ画像アップロード開始...');
+
+      const formData = new FormData();
+      formData.append('file', selectedImage);
+      formData.append('userId', `group_${selectedGroup.groupId}`);
+
+      const response = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'アップロードに失敗しました');
+      }
+
+      const imageUrl = data.url || data.downloadUrl;
+      if (!imageUrl) {
+        throw new Error('画像URLが返ってきませんでした');
+      }
+
+      // Firebaseにメッセージとして保存
+      const messagesRef = database.ref(`groupChats/${selectedGroup.groupId}/messages`);
+
+      await messagesRef.push({
+        type: 'image',
+        imageUrl: imageUrl,
+        sender: user.uid,
+        senderName: username,
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+      });
+
+      console.log('✅ グループ画像メッセージ送信完了');
+
+      // プレビューをクリア
+      handleCancelImage();
+
+    } catch (error) {
+      console.error('❌ グループ画像送信エラー:', error);
+      alert('画像の送信に失敗しました: ' + error.message);
+    }
+
+    setUploadingImage(false);
+  };
+
+
   const formatDateTime = (timestamp) => {
     if (!timestamp) return '';
 
@@ -718,49 +911,27 @@ function MessagingApp() {
     }
   }, []);
 
-  // reCAPTCHAの初期化
+  // reCAPTCHA v3の初期化
   useEffect(() => {
     if (user) return; // ログイン済みの場合は何もしない
 
-    const initRecaptcha = () => {
-      if (window.grecaptcha && window.grecaptcha.render && recaptchaRef.current) {
-        try {
-          if (recaptchaWidgetId.current !== null) {
-            window.grecaptcha.reset(recaptchaWidgetId.current);
-            setRecaptchaVerified(false);
-          } else {
-            recaptchaWidgetId.current = window.grecaptcha.render(recaptchaRef.current, {
-              sitekey: RECAPTCHA_SITE_KEY,
-              size: 'normal', // 画像認証パネルを使用
-              callback: (token) => {
-                console.log('reCAPTCHA検証成功');
-                setRecaptchaVerified(true);
-              },
-              'expired-callback': () => {
-                console.log('reCAPTCHA有効期限切れ');
-                setRecaptchaVerified(false);
-              },
-              'error-callback': () => {
-                console.log('reCAPTCHAエラー');
-                setRecaptchaVerified(false);
-              }
-            });
-            console.log('reCAPTCHA初期化完了 Widget ID:', recaptchaWidgetId.current);
-          }
-        } catch (error) {
-          console.error('reCAPTCHA初期化エラー:', error);
-        }
+    const initRecaptchaV3 = () => {
+      if (window.grecaptcha && window.grecaptcha.ready) {
+        window.grecaptcha.ready(() => {
+          console.log('reCAPTCHA v3 初期化完了');
+          setRecaptchaVerified(true); // v3は自動的に検証されるため常にtrue
+        });
       }
     };
 
-    if (window.grecaptcha && window.grecaptcha.render) {
-      initRecaptcha();
+    if (window.grecaptcha && window.grecaptcha.ready) {
+      initRecaptchaV3();
     } else {
       // reCAPTCHAスクリプトの読み込みを待つ
       const checkInterval = setInterval(() => {
-        if (window.grecaptcha && window.grecaptcha.render) {
+        if (window.grecaptcha && window.grecaptcha.ready) {
           clearInterval(checkInterval);
-          initRecaptcha();
+          initRecaptchaV3();
         }
       }, 100);
 
@@ -1405,24 +1576,6 @@ function MessagingApp() {
     }
   }, [user]);
 
-  // reCAPTCHA v2のコールバック関数（グローバルに定義）
-  React.useEffect(() => {
-    window.onRecaptchaSuccess = function (token) {
-      console.log('✅ reCAPTCHA検証成功');
-      setRecaptchaVerified(true);
-    };
-
-    window.onRecaptchaExpired = function () {
-      console.log('⚠️ reCAPTCHA有効期限切れ');
-      setRecaptchaVerified(false);
-    };
-
-    return () => {
-      delete window.onRecaptchaSuccess;
-      delete window.onRecaptchaExpired;
-    };
-  }, []);
-
   // タブのアクティブ状態を監視
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -1922,19 +2075,19 @@ function MessagingApp() {
       return;
     }
 
-    // ✅ reCAPTCHA検証
-    const recaptchaResponse = recaptchaWidgetId.current !== null 
-      ? window.grecaptcha.getResponse(recaptchaWidgetId.current) 
-      : '';
-    
-    if (!recaptchaResponse) {
-      setError('reCAPTCHAを完了してください');
-      return;
-    }
-
     setLoading(true);
     setError('');
+
     try {
+      // ✅ reCAPTCHA v3トークンを取得
+      const recaptchaToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'signup' });
+
+      if (!recaptchaToken) {
+        setError('reCAPTCHA検証に失敗しました');
+        setLoading(false);
+        return;
+      }
+
       // ✅ セッションベース
       await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
       const userCredential = await auth.createUserWithEmailAndPassword(email, password);
@@ -1947,17 +2100,8 @@ function MessagingApp() {
         createdAt: Date.now()
       });
 
-      // 成功後リセット
-      if (recaptchaWidgetId.current !== null) {
-        window.grecaptcha.reset(recaptchaWidgetId.current);
-        setRecaptchaVerified(false);
-      }
     } catch (err) {
       setError('アカウント作成に失敗しました: ' + err.message);
-      if (recaptchaWidgetId.current !== null) {
-        window.grecaptcha.reset(recaptchaWidgetId.current);
-        setRecaptchaVerified(false);
-      }
     }
     setLoading(false);
   };
@@ -2065,19 +2209,19 @@ function MessagingApp() {
       return;
     }
 
-    // ✅ reCAPTCHA検証
-    const recaptchaResponse = recaptchaWidgetId.current !== null 
-      ? window.grecaptcha.getResponse(recaptchaWidgetId.current) 
-      : '';
-    
-    if (!recaptchaResponse) {
-      setError('reCAPTCHAを完了してください');
-      return;
-    }
-
     setLoading(true);
     setError('');
+
     try {
+      // ✅ reCAPTCHA v3トークンを取得
+      const recaptchaToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'login' });
+
+      if (!recaptchaToken) {
+        setError('reCAPTCHA検証に失敗しました');
+        setLoading(false);
+        return;
+      }
+
       // ✅ チェックボックスの状態に応じて永続性を設定
       if (rememberMe) {
         // ログイン状態を保持（ブラウザを閉じても保持）
@@ -2086,21 +2230,11 @@ function MessagingApp() {
         // タブを閉じるとログアウト
         await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
       }
-      
+
       await auth.signInWithEmailAndPassword(email, password);
 
-      // ログイン成功後、reCAPTCHAをリセット
-      if (recaptchaWidgetId.current !== null) {
-        window.grecaptcha.reset(recaptchaWidgetId.current);
-        setRecaptchaVerified(false);
-      }
     } catch (err) {
       setError('ログインに失敗しました: ' + err.message);
-      // エラー時もreCAPTCHAをリセット
-      if (recaptchaWidgetId.current !== null) {
-        window.grecaptcha.reset(recaptchaWidgetId.current);
-        setRecaptchaVerified(false);
-      }
     }
     setLoading(false);
   };
@@ -2231,6 +2365,12 @@ function MessagingApp() {
 
 
   const handleSend = async () => {
+    // 画像送信がある場合
+    if (selectedImage) {
+      await handleSendImage();
+      return;
+    }
+
     // ★ 公式アカウントへの送信をブロック
     if (selectedFriend?.uid === OFFICIAL_ACCOUNT.uid) {
       alert('📢 公式アカウントへのメッセージ送信はできません');
@@ -2243,6 +2383,7 @@ function MessagingApp() {
     const messagesRef = database.ref(`chats/${chatKey}/messages`);
 
     await messagesRef.push({
+      type: 'text', // ← typeを明示的に追加
       text: messageText,
       sender: user.uid,
       senderName: username,
@@ -2252,10 +2393,8 @@ function MessagingApp() {
     });
 
     setMessageText('');
-
     resetTextareaHeight();
   };
-
 
   // 個人チャットのメッセージ取り消し
   const handleDeleteMessage = async (messageId) => {
@@ -2309,6 +2448,11 @@ function MessagingApp() {
     }));
   };
 
+
+  // テキスト入力の変更を処理
+  const handleChange = (e) => {
+    setMessageText(e.target.value);
+  };
 
   const handleKeyDown = (e) => {
     // 1. IME変換中（全角入力中）のチェックを強化
@@ -2447,23 +2591,27 @@ function MessagingApp() {
     setLoading(false);
   };
 
-  // グループメッセージの送信
   const handleSendGroupMessage = async () => {
+    // 画像送信がある場合
+    if (selectedImage) {
+      await handleSendGroupImage();
+      return;
+    }
+
     if (!messageText.trim() || !selectedGroup) return;
 
     const messagesRef = database.ref(`groupChats/${selectedGroup.groupId}/messages`);
 
     await messagesRef.push({
+      type: 'text', // ← typeを明示的に追加
       text: messageText,
       sender: user.uid,
       senderName: username,
       timestamp: Date.now(),
-      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
-      readBy: {} // ← これを追加
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
     });
 
     setMessageText('');
-
     resetTextareaHeight();
   };
 
@@ -2613,20 +2761,7 @@ function MessagingApp() {
             className="w-full border border-gray-300 rounded-lg px-4 py-3 mb-4 focus:outline-none focus:border-green-500"
           />
 
-          {/* ✅ reCAPTCHA v2 */}
-          <div className="flex flex-col items-center mb-4">
-            <div ref={recaptchaRef}></div>
-            {!recaptchaVerified && (
-              <p className="text-xs text-gray-500 mt-2">
-                ✓ ロボットでないことを確認してください
-              </p>
-            )}
-            {recaptchaVerified && (
-              <p className="text-xs text-green-600 mt-2">
-                ✓ 認証完了
-              </p>
-            )}
-          </div>
+          {/* ✅ reCAPTCHA v3 (非表示で自動実行) */}
 
           {/* ✅ ログイン状態を保持するチェックボックス（ログイン時のみ） */}
           {!isSignUp && (
@@ -2646,7 +2781,7 @@ function MessagingApp() {
 
           <button
             onClick={isSignUp ? handleSignUp : handleLogin}
-            disabled={loading || !recaptchaVerified}
+            disabled={loading}
             className="w-full bg-green-500 text-white rounded-lg py-3 font-semibold hover:bg-green-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed mb-3"
           >
             {loading ? '処理中...' : (isSignUp ? 'アカウント作成' : 'ログイン')}
@@ -2656,11 +2791,6 @@ function MessagingApp() {
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError('');
-              // reCAPTCHAをリセット
-              if (recaptchaWidgetId.current !== null) {
-                window.grecaptcha.reset(recaptchaWidgetId.current);
-                setRecaptchaVerified(false);
-              }
             }}
             className="w-full text-green-600 hover:text-green-700 text-sm"
           >
@@ -3061,20 +3191,40 @@ function MessagingApp() {
                 setCurrentView('friends');
                 setSelectedGroup(null);
               }}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${currentView === 'friends' ? 'bg-white text-green-600' : 'bg-green-600 text-white hover:bg-green-700'
+              className={`relative flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${currentView === 'friends' ? 'bg-white text-green-600' : 'bg-green-600 text-white hover:bg-green-700'
                 }`}
             >
               友達
+              {(() => {
+                const totalUnread = Object.keys(unreadCounts)
+                  .filter(key => key.startsWith('friend-'))
+                  .reduce((sum, key) => sum + (unreadCounts[key] || 0), 0);
+                return totalUnread > 0 ? (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </span>
+                ) : null;
+              })()}
             </button>
             <button
               onClick={() => {
                 setCurrentView('groups');
                 setSelectedFriend(null);
               }}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${currentView === 'groups' ? 'bg-white text-green-600' : 'bg-green-600 text-white hover:bg-green-700'
+              className={`relative flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${currentView === 'groups' ? 'bg-white text-green-600' : 'bg-green-600 text-white hover:bg-green-700'
                 }`}
             >
               グループ
+              {(() => {
+                const totalUnread = Object.keys(unreadCounts)
+                  .filter(key => key.startsWith('group-'))
+                  .reduce((sum, key) => sum + (unreadCounts[key] || 0), 0);
+                return totalUnread > 0 ? (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </span>
+                ) : null;
+              })()}
             </button>
           </div>
 
@@ -3172,9 +3322,11 @@ function MessagingApp() {
                               </h3>
                               <p className="text-sm text-gray-500 truncate">
                                 {lastMsg
-                                  ? (isEmojiOnly(lastMsg.text)
-                                    ? (lastMsg.sender === user.uid ? 'スタンプを送信しました' : 'スタンプを受信しました')
-                                    : (lastMsg.text || '').substring(0, 25) + ((lastMsg.text || '').length > 25 ? '...' : ''))
+                                  ? (lastMsg.type === 'image'
+                                    ? (lastMsg.sender === user.uid ? '📷 画像を送信しました' : '📷 画像を受信しました')
+                                    : isEmojiOnly(lastMsg.text)
+                                      ? (lastMsg.sender === user.uid ? 'スタンプを送信しました' : 'スタンプを受信しました')
+                                      : (lastMsg.text || '').substring(0, 25) + ((lastMsg.text || '').length > 25 ? '...' : ''))
                                   : 'タップしてチャット'}
                               </p>
                             </div>
@@ -3262,9 +3414,11 @@ function MessagingApp() {
                                   </div>
                                   {/* メッセージ内容 */}
                                   <p className="truncate">
-                                    {isEmojiOnly(lastMsg.text)
-                                      ? `スタンプを送信しました`
-                                      : `${lastMsg.text || ''}`}
+                                    {lastMsg.type === 'image'
+                                      ? '📷 画像を送信しました'
+                                      : isEmojiOnly(lastMsg.text)
+                                        ? `スタンプを送信しました`
+                                        : `${lastMsg.text || ''}`}
                                   </p>
                                 </div>
                               ) : (
@@ -3380,6 +3534,7 @@ function MessagingApp() {
                 messages.map((message, idx) => {
                   const isMe = message.sender === user.uid;
                   const isDeleted = message.deleted === true;
+                  const isImageMessage = message.type === 'image' && !!message.imageUrl;
 
                   const readBy = message.readBy || {};
                   const readCount = Object.keys(readBy).length;
@@ -3447,19 +3602,35 @@ function MessagingApp() {
                               </p>
                             </div>
                           ) : (
-                            <div
-                              className={`rounded-2xl px-4 py-2 ${isMe ? 'bg-green-500 text-white' : 'bg-white text-gray-800'
-                                }`}
-                            >
+                            isImageMessage ? (
                               <div
-                                className={`break-words whitespace-pre-wrap ${isEmojiOnly(message.text)
-                                  ? 'text-6xl leading-none text-center'
-                                  : 'text-base'
+                                className="cursor-pointer"
+                                onClick={() => setExpandedImage(message.imageUrl)}
+                              >
+                                <img
+                                  src={message.imageUrl}
+                                  alt="送信画像"
+                                  className="max-w-xs rounded-lg hover:opacity-90 transition-opacity"
+                                  onError={(e) => {
+                                    e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">読み込み失敗</text></svg>';
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div
+                                className={`rounded-2xl px-4 py-2 ${isMe ? 'bg-green-500 text-white' : 'bg-white text-gray-800'
                                   }`}
                               >
-                                {isEmojiOnly(message.text) ? message.text : linkifyText(message.text)}
+                                <div
+                                  className={`break-words whitespace-pre-wrap ${isEmojiOnly(message.text)
+                                    ? 'text-6xl leading-none text-center'
+                                    : 'text-base'
+                                    }`}
+                                >
+                                  {isEmojiOnly(message.text) ? message.text : linkifyText(message.text)}
+                                </div>
                               </div>
-                            </div>
+                            )
                           )}
 
                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 px-2">
@@ -3513,10 +3684,33 @@ function MessagingApp() {
             ) : (
               // 通常のメッセージ入力エリア
               <div className="bg-white border-t border-gray-200 p-4">
-                <div className="flex items-center gap-2">
+                {/* 画像プレビュー */}
+                {imagePreview && (
+                  <div className="mb-3 p-3 bg-gray-50 rounded-lg relative">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={imagePreview}
+                        alt="プレビュー"
+                        className="w-20 h-20 object-cover rounded-lg border border-gray-300"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-700">📸 画像を送信</p>
+                        <p className="text-xs text-gray-500">{(selectedImage.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                      <button
+                        onClick={handleCancelImage}
+                        className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                        disabled={uploadingImage}
+                      >
+                        <XIcon />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                  {/* ★ 絵文字一覧（ボタンの上） */}
-                  {/* ★ 絵文字パネルの表示位置調整 */}
+                {/* 入力欄 */}
+                <div className="flex items-end gap-2">
+                  {/* 絵文字パネル */}
                   {showEmoji && (
                     <div className="absolute bottom-16 left-4 bg-white border border-gray-200 rounded-xl p-3 shadow-2xl z-50 w-72">
                       <div className="grid grid-cols-5 gap-2 text-2xl max-h-60 overflow-y-auto custom-scrollbar">
@@ -3533,38 +3727,55 @@ function MessagingApp() {
                     </div>
                   )}
 
-                  {/* スタンプ開閉ボタン */}
-                  <div class="emoji-container">
-                    <div class="emoji-picker" id="emojiPicker">
-                    </div>
-                    <button
-                      onClick={() => {
-                        console.log('emoji button clicked');
-                        setShowEmoji(prev => !prev);
-                      }}
-                      className="text-2xl px-2"
-                    >
-                      😊
-                    </button>
-                  </div>
+                  {/* 絵文字ボタン（背景なし） */}
+                  <button
+                    onClick={() => {
+                      console.log('emoji button clicked');
+                      setShowEmoji(prev => !prev);
+                    }}
+                    className="text-2xl px-2"
+                    title="絵文字を選択"
+                  >
+                    😊
+                  </button>
 
+                  {/* 画像選択ボタン（丸型・背景なし） */}
+                  <input
+                    type="file"
+                    ref={imageInputRef}
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={uploadingImage || !!imagePreview}
+                    className="w-10 h-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-50"
+                    title="画像を選択"
+                  >
+                    📎
+                  </button>
 
+                  {/* テキスト入力（枠なし・背景なし） */}
                   <textarea
                     ref={textareaRef}
-                    className="message-input flex-1 border-gray-300 px-4 py-3 focus:outline-none focus:border-green-500"
+                    className="flex-1 rounded-lg px-4 py-3 resize-none focus:outline-none disabled:bg-gray-100"
                     value={messageText}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="メッセージを入力　（Shift ＋ Enterで改行）"
-                    rows={1}
+                    placeholder={uploadingImage ? "📤 画像を送信中..." : "メッセージを入力　（Shift ＋ Enterで改行）"}
+                    rows="1"
+                    style={{ minHeight: '48px', maxHeight: '120px' }}
+                    disabled={uploadingImage}
                   />
 
+                  {/* 送信ボタン（丸型） */}
                   <button
                     onClick={selectedGroup ? handleSendGroupMessage : handleSend}
-                    disabled={!messageText.trim()}
-                    className="bg-green-500 text-white rounded-full p-3 hover:bg-green-600 transition-colors disabled:bg-gray-300 send-glow"
+                    disabled={(!messageText.trim() && !imagePreview) || uploadingImage}
+                    className="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors disabled:bg-gray-300"
                   >
-                    <SendIcon />
+                    {uploadingImage ? '📤' : <SendIcon />}
                   </button>
                 </div>
               </div>
@@ -3978,6 +4189,33 @@ function MessagingApp() {
             >
               閉じる
             </button>
+          </div>
+        </div>
+      )}
+
+      {expandedImage && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow hover:bg-gray-100"
+              onClick={() => setExpandedImage(null)}
+            >
+              x
+            </button>
+            <img
+              src={expandedImage}
+              alt="拡大画像"
+              className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-lg"
+              onError={(e) => {
+                e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">読み込み失敗</text></svg>';
+              }}
+            />
           </div>
         </div>
       )}
