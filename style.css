@@ -39,11 +39,11 @@ body {
 }
 
 .delete-button-left {
-  left: -30px;
+  left: 5px;
 }
 
 .delete-button-right {
-  right: -30px;
+  right: 5px;
 }
 
 /* スクロールバーのカスタマイズ */
@@ -449,5 +449,51 @@ input[type="checkbox"]:hover {
 }
 
 .grecaptcha-badge { 
-    top: 0px !important; 
+    top: 76px !important; 
+}
+
+
+/* メッセージコンテナの横幅制限を追加 */
+.messages-container {
+  max-width: 100%;
+  overflow-x: hidden; /* 横スクロールを防止 */
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+/* メッセージバブルの改善 */
+.message-bubble {
+  max-width: 65%; /* 70%から65%に変更してより適切に */
+  width: fit-content;
+  word-wrap: break-word;
+  word-break: break-word; /* 長いURLなども強制改行 */
+  overflow-wrap: break-word;
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-bottom: 4px;
+}
+
+/* スクロールバーを完全に非表示にする */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 0px; /* 8px から 0px に変更 */
+  display: none; /* 完全に非表示 */
+}
+
+.custom-scrollbar {
+  -ms-overflow-style: none;  /* IE, Edge用 */
+  scrollbar-width: none;  /* Firefox用 */
+}
+
+/* メッセージエリア全体の幅調整 */
+.chat-area {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 画像メッセージも幅制限 */
+.message-image {
+  max-width: 300px; /* 画像の最大幅を制限 */
+  height: auto;
+  border-radius: 8px;
 }

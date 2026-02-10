@@ -132,6 +132,20 @@ const ZoomInIcon = () => (
   </svg>
 );
 
+// 📧 メールアイコン
+const MailIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+    <polyline points="22,6 12,13 2,6"></polyline>
+  </svg>
+);
+
+// 📞 電話アイコン
+const PhoneIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+  </svg>
+);
 
 // ⬇️ ここに配置（MessagingApp関数の前）
 // 画像キャッシュマネージャー
@@ -401,6 +415,17 @@ function MessagingApp() {
   const [uploadingImage, setUploadingImage] = useState(false); // アップロード中
   const [expandedImage, setExpandedImage] = useState(null); // 拡大表示中の画像
   const imageInputRef = useRef(null); // 画像input要素の参照
+
+  //
+  const [showOfficialMailModal, setShowOfficialMailModal] = useState(false);
+  const [mailTo, setMailTo] = useState('');
+  const [mailPassword, setMailPassword] = useState('');
+  const [mailContent, setMailContent] = useState('');
+
+  // 通話招待モーダル用
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+
 
   // 77行目から
   const emojiList = [
@@ -846,7 +871,73 @@ function MessagingApp() {
   });
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  // 通話URLを取得
+  const getCallUrl = () => {
+    let roomId = '';
+    
+    if (selectedFriend) {
+      // 1対1チャットの場合：両者のUIDを組み合わせて一意のルームIDを作成
+      const uids = [user.uid, selectedFriend.uid].sort();
+      roomId = `chatly_${uids[0]}_${uids[1]}`;
+    } else if (selectedGroup) {
+      // グループチャットの場合：グループIDを使用
+      roomId = `chatly_group_${selectedGroup.groupId}`;
+    }
+    
+    return roomId ? `https://meet.jit.si/${roomId}` : null;
+  };
+
+  // 招待モーダルを開く（電話ボタンクリック時）
+  const openInviteModal = () => {
+    setShowInviteModal(true);
+    setInviteEmail('');
+  };
+
+  // Chatlyで通話を開始（モーダル内のボタンクリック時）
+  const startCallDirect = () => {
+    const callUrl = getCallUrl();
+    if (callUrl) {
+      window.open(callUrl, '_blank');
+      setShowInviteModal(false);
+    }
+  };
+
+  // メールで招待を送信
+  const sendInviteEmail = () => {
+    if (!inviteEmail.trim()) {
+      alert('❌ メールアドレスを入力してください');
+      return;
+    }
+
+    const callUrl = getCallUrl();
+    if (!callUrl) return;
+
+    const chatName = selectedGroup 
+      ? selectedGroup.name 
+      : selectedFriend.username;
+
+    const subject = `${username}さんから通話の招待`;
+    const body = `
+${username}さんがあなたを通話に招待しています。
+
+チャット名: ${chatName}
+
+以下のリンクをクリックして参加してください：
+${callUrl}
+
+※ このリンクはChatlyのビデオ通話機能（Jitsi Meet）を使用しています。
+    `.trim();
+
+    const mailtoUrl = `mailto:${inviteEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailtoUrl, '_blank');
+
+    setShowInviteModal(false);
+    setInviteEmail('');
   };
 
   // データサイズをチェックする関数
@@ -2591,6 +2682,50 @@ function MessagingApp() {
     setLoading(false);
   };
 
+  // モーダルを開く
+  const handleOpenOfficialMail = () => {
+    setMailTo('');
+    setMailPassword('');
+    setMailContent('');
+    setMailSubject('');
+    setShowOfficialMailModal(true);
+  };
+
+  // メールを送信（新しいページで開く）
+  const handleSendOfficialMail = () => {
+    // 必須項目のチェック
+    if (!mailTo.trim()) {
+      alert('❌ To（宛名）を入力してください');
+      return;
+    }
+
+    // メール本文を構築（シンプルなフォーマット）
+    const emailBody = `
+To: ${mailTo}
+パスワード: ${mailPassword || 'なし'}
+内容:
+${mailContent}
+    `.trim();
+
+    // 件名は固定
+    const subject = 'Chatlyからのメール';
+
+    // mailto: URLを生成
+    const mailtoUrl = `mailto:${OFFICIAL_ACCOUNT.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+
+    // 新しいウィンドウで開く
+    window.open(mailtoUrl, '_blank');
+
+    // モーダルを閉じる
+    setShowOfficialMailModal(false);
+
+    // フォームをリセット
+    setMailTo('');
+    setMailPassword('');
+    setMailContent('');
+  };
+
+
   const handleSendGroupMessage = async () => {
     // 画像送信がある場合
     if (selectedImage) {
@@ -3510,6 +3645,32 @@ function MessagingApp() {
                   </p>
                 </div>
               </div>
+              
+              {/* 右側のボタンエリア */}
+              <div className="flex items-center gap-2">
+                {/* 電話ボタン（公式アカウント以外で表示） */}
+                {(selectedGroup || (selectedFriend && selectedFriend.uid !== OFFICIAL_ACCOUNT.uid)) && (
+                  <button
+                    onClick={openInviteModal}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                    title="ビデオ通話を開始"
+                  >
+                    <PhoneIcon />
+                  </button>
+                )}
+                
+                {/* 公式アカウント選択時のみメールボタンを表示 */}
+                {!selectedGroup && selectedFriend && selectedFriend.uid === OFFICIAL_ACCOUNT.uid && (
+                  <button
+                    onClick={() => setShowOfficialMailModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    title="運営にメール送信"
+                  >
+                    <MailIcon />
+                    <span className="text-sm font-semibold">メール送信</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* ★ 管理者用一斉送信パネル（公式アカウント選択時のみ表示） */}
@@ -3577,7 +3738,7 @@ function MessagingApp() {
                         )
                       )}
 
-                      <div className="max-w-xs lg:max-w-md message-wrapper">
+                      <div className={`max-w-xs lg:max-w-md message-wrapper ${!isMe && !isDeleted ? 'ml-2' : ''}`}>
                         {/* 削除されていないメッセージのみ削除ボタンを表示 */}
                         {isMe && !isDeleted && (
                           <button
@@ -3650,16 +3811,6 @@ function MessagingApp() {
                           </div>
                         </div>
                       </div>
-
-                      {isMe && !isDeleted && (
-                        <AvatarImage
-                          src={user?.photoURL || avatarUrl}
-                          alt={username}
-                          fallbackText={username.charAt(0).toUpperCase()}
-                          size="w-8 h-8"
-                          bgColor="bg-green-500"
-                        />
-                      )}
                     </div>
                   );
                 })
@@ -4216,6 +4367,184 @@ function MessagingApp() {
                 e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">読み込み失敗</text></svg>';
               }}
             />
+          </div>
+        </div>
+      )}
+
+
+      {/* 公式アカウントメール送信モーダル */}
+      {showOfficialMailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            {/* ヘッダー */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <MailIcon />
+                運営にメール送信
+              </h2>
+              <button
+                onClick={() => setShowOfficialMailModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+
+            {/* フォーム */}
+            <div className="p-6 space-y-4">
+              {/* To（宛名） */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  To（宛名） <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={mailTo}
+                  onChange={(e) => setMailTo(e.target.value)}
+                  placeholder="例: 〇〇様、運営チーム様"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              {/* パスワード */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  パスワード
+                </label>
+                <input
+                  type="text"
+                  value={mailPassword}
+                  onChange={(e) => setMailPassword(e.target.value)}
+                  placeholder="パスワードを入力（任意）"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* 内容 */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  内容
+                </label>
+                <textarea
+                  value={mailContent}
+                  onChange={(e) => setMailContent(e.target.value)}
+                  placeholder="お問い合わせ内容を入力してください"
+                  rows="8"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* プレビュー */}
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs font-semibold text-gray-600 mb-2">📋 メール本文プレビュー:</p>
+                <div className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border border-gray-300 max-h-40 overflow-y-auto">
+                  {`To: ${mailTo || '（未入力）'}\nパスワード: ${mailPassword || 'なし'}\n内容:\n${mailContent || '（未入力）'}`}
+                </div>
+              </div>
+
+              {/* ボタン */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowOfficialMailModal(false)}
+                  className="flex-1 bg-gray-500 text-white rounded-lg py-3 font-semibold hover:bg-gray-600 transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleSendOfficialMail}
+                  disabled={!mailTo.trim()}
+                  className="flex-1 bg-blue-500 text-white rounded-lg py-3 font-semibold hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  📧 メール作成
+                </button>
+              </div>
+
+              {/* 注意事項 */}
+              <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                <p className="text-xs text-yellow-800">
+                  ⚠️ 「メール作成」をクリックすると、新しいページでメールクライアントが起動します。入力した内容が自動で反映されます。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 通話招待モーダル */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            {/* ヘッダー */}
+            <div className="bg-green-500 text-white p-4 rounded-t-lg flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                📞 通話に招待
+              </h2>
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="p-2 hover:bg-green-600 rounded-full transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+
+            {/* コンテンツ */}
+            <div className="p-6 space-y-4">
+              {/* チャット情報 */}
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">通話相手:</p>
+                <p className="text-lg font-semibold text-gray-800">
+                  {selectedGroup ? selectedGroup.name : selectedFriend.username}
+                </p>
+              </div>
+
+              {/* 招待方法の選択 */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800">招待方法を選択してください</h3>
+
+                {/* Chatlyで招待 */}
+                <button
+                  onClick={startCallDirect}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  <PhoneIcon />
+                  <div className="text-left">
+                    <div className="font-bold">Chatlyで通話開始</div>
+                    <div className="text-xs opacity-90">すぐに通話を開始します</div>
+                  </div>
+                </button>
+
+                {/* メールで招待 */}
+                <div className="border-t pt-3">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    メールで招待
+                  </label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="招待する相手のメールアドレス"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 mb-3 focus:outline-none focus:border-green-500"
+                  />
+                  <button
+                    onClick={sendInviteEmail}
+                    disabled={!inviteEmail.trim()}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    <MailIcon />
+                    <span className="font-semibold">招待メールを送信</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* キャンセルボタン */}
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="w-full bg-gray-500 text-white rounded-lg py-2 hover:bg-gray-600 transition-colors"
+              >
+                キャンセル
+              </button>
+            </div>
           </div>
         </div>
       )}
