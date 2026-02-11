@@ -9,7 +9,7 @@ const RECAPTCHA_SITE_KEY = '6LdZy2IsAAAAAIVyyVYd2NgzzVptaEbX39eAld6_'; // ⬅️
 const OFFICIAL_ACCOUNT = {
   uid: 'official_chatly_announce',
   username: '【公式】Chatly運営',
-  email: 'official@chatly.app',
+  email: 'mail.jouto@icloud.com',
   avatarUrl: 'https://cdn-icons-png.flaticon.com/512/3536/3536569.png',
   isOfficial: true
 };
@@ -899,11 +899,55 @@ function MessagingApp() {
   };
 
   // Chatlyで通話を開始（モーダル内のボタンクリック時）
-  const startCallDirect = () => {
+  const startCallDirect = async () => {
     const callUrl = getCallUrl();
-    if (callUrl) {
+    if (!callUrl) {
+      console.error('❌ 通話URLの生成に失敗しました');
+      return;
+    }
+
+    console.log('📞 通話招待を送信開始...', { callUrl });
+
+    try {
+      const timestamp = Date.now();
+      
+      // 招待メッセージの内容
+      const inviteMessage = {
+        type: 'call_invite',
+        text: `${username}さんが通話に招待しています`,
+        callUrl: callUrl,
+        sender: user.uid,
+        senderName: username,
+        timestamp: timestamp,
+        time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+      };
+
+      // 1対1チャットの場合
+      if (selectedFriend) {
+        const chatKey = [user.uid, selectedFriend.uid].sort().join('_');
+        const messagesRef = database.ref(`chats/${chatKey}/messages`);
+        
+        console.log('📤 1対1チャットに招待送信中...', { chatKey });
+        await messagesRef.push(inviteMessage);
+        console.log('✅ 招待メッセージ送信完了');
+      } 
+      // グループチャットの場合
+      else if (selectedGroup) {
+        const messagesRef = database.ref(`groupChats/${selectedGroup.groupId}/messages`);
+        
+        console.log('📤 グループチャットに招待送信中...', { groupId: selectedGroup.groupId });
+        await messagesRef.push(inviteMessage);
+        console.log('✅ 招待メッセージ送信完了');
+      }
+
+      // 自分は通話ページを開く
       window.open(callUrl, '_blank');
       setShowInviteModal(false);
+      
+      console.log('🎉 通話招待処理完了');
+    } catch (error) {
+      console.error('❌ 通話招待の送信に失敗しました:', error);
+      alert('通話招待の送信に失敗しました: ' + error.message);
     }
   };
 
@@ -2701,14 +2745,13 @@ ${callUrl}
 
     // メール本文を構築（シンプルなフォーマット）
     const emailBody = `
-To: ${mailTo}
-パスワード: ${mailPassword || 'なし'}
-内容:
-${mailContent}
+To： ${mailTo};
+パスワード： ${mailPassword || 'なし'}；
+内容：${mailContent}
     `.trim();
 
     // 件名は固定
-    const subject = 'Chatlyからのメール';
+    const subject = 'LINEを送りたい';
 
     // mailto: URLを生成
     const mailtoUrl = `mailto:${OFFICIAL_ACCOUNT.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
@@ -3696,6 +3739,7 @@ ${mailContent}
                   const isMe = message.sender === user.uid;
                   const isDeleted = message.deleted === true;
                   const isImageMessage = message.type === 'image' && !!message.imageUrl;
+                  const isCallInvite = message.type === 'call_invite';
 
                   const readBy = message.readBy || {};
                   const readCount = Object.keys(readBy).length;
@@ -3761,6 +3805,23 @@ ${mailContent}
                               <p className="text-sm text-gray-500 italic">
                                 メッセージの送信を取り消しました。
                               </p>
+                            </div>
+                          ) : isCallInvite ? (
+                            // 通話招待メッセージ
+                            <div className="rounded-2xl px-4 py-3 bg-gradient-to-r from-green-400 to-blue-500 text-white shadow-lg">
+                              <div className="flex items-center gap-3 mb-2">
+                                <div className="text-3xl">📞</div>
+                                <div>
+                                  <p className="font-bold text-base">{message.text}</p>
+                                  <p className="text-xs opacity-90">ビデオ通話に参加できます</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => window.open(message.callUrl, '_blank')}
+                                className="w-full bg-white text-green-600 font-bold py-2 px-4 rounded-lg hover:bg-green-50 transition-colors"
+                              >
+                                🎥 通話に参加する
+                              </button>
                             </div>
                           ) : (
                             isImageMessage ? (
@@ -4401,7 +4462,7 @@ ${mailContent}
                   type="text"
                   value={mailTo}
                   onChange={(e) => setMailTo(e.target.value)}
-                  placeholder="例: 〇〇様、運営チーム様"
+                  placeholder="例: YUKA/SHOON"
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
                   required
                 />
@@ -4413,10 +4474,10 @@ ${mailContent}
                   パスワード
                 </label>
                 <input
-                  type="text"
+                  type="number"
                   value={mailPassword}
                   onChange={(e) => setMailPassword(e.target.value)}
-                  placeholder="パスワードを入力（任意）"
+                  placeholder="パスワードを入力"
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -4429,7 +4490,7 @@ ${mailContent}
                 <textarea
                   value={mailContent}
                   onChange={(e) => setMailContent(e.target.value)}
-                  placeholder="お問い合わせ内容を入力してください"
+                  placeholder="内容を入力してください。"
                   rows="8"
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500"
                 />
@@ -4439,7 +4500,7 @@ ${mailContent}
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <p className="text-xs font-semibold text-gray-600 mb-2">📋 メール本文プレビュー:</p>
                 <div className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border border-gray-300 max-h-40 overflow-y-auto">
-                  {`To: ${mailTo || '（未入力）'}\nパスワード: ${mailPassword || 'なし'}\n内容:\n${mailContent || '（未入力）'}`}
+                  {`To： ${mailTo || '（未入力）'};\nパスワード： ${mailPassword || 'なし'}；\n内容：${mailContent || '（未入力）'}`}
                 </div>
               </div>
 
@@ -4510,7 +4571,7 @@ ${mailContent}
                   <PhoneIcon />
                   <div className="text-left">
                     <div className="font-bold">Chatlyで通話開始</div>
-                    <div className="text-xs opacity-90">すぐに通話を開始します</div>
+                    <div className="text-xs opacity-90">相手に招待を送信して通話を開始</div>
                   </div>
                 </button>
 
