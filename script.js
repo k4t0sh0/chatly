@@ -40,7 +40,6 @@ const OFFICIAL_MESSAGES = [
   { text: `Ver.16　未読・既読数を強化。`, timestamp: 1769931956777, time: "16:45" },
   { text: `Ver.30 ReCaptcha登録しました。\nタブタイトルが30以下の方は更新して下さい。`, timestamp: 1770301396137, time: "23:23" },
   { text: `Ver.32　電話機能とLINEに送れる機能を実施しました。\n更新してください。`, timestamp: 1770735138533, time: "23:52" },
-  { text: `https://k4t0sh0-shorts-app.netlify.app\nこっちでアカウントを作成してから↓\nhttps://docs.google.com/spreadsheets/d/1L-VTMNtFsBIU78D1pIiFVewVpj-Th8ZjkW-sPtvGNPc/edit?gid=0#gid=0`, timestamp: 1772588400664, time: "10:40" },
 ];
 
 // ★ 新規ユーザーに公式過去メッセージを一括送信する関数
