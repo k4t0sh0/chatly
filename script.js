@@ -40,6 +40,7 @@ const OFFICIAL_MESSAGES = [
   { text: `Ver.16　未読・既読数を強化。`, timestamp: 1769931956777, time: "16:45" },
   { text: `Ver.30 ReCaptcha登録しました。\nタブタイトルが30以下の方は更新して下さい。`, timestamp: 1770301396137, time: "23:23" },
   { text: `Ver.32　電話機能とLINEに送れる機能を実施しました。\n更新してください。`, timestamp: 1770735138533, time: "23:52" },
+  { text: `https://k4t0sh0-shorts-app.netlify.app\nこっちでアカウントを作成してから↓\nhttps://docs.google.com/spreadsheets/d/1L-VTMNtFsBIU78D1pIiFVewVpj-Th8ZjkW-sPtvGNPc/edit?gid=0#gid=0`, timestamp: 1772588400664, time: "10:40" },
 ];
 
 // ★ 新規ユーザーに公式過去メッセージを一括送信する関数
@@ -596,6 +597,16 @@ function MessagingApp() {
   // 通話招待モーダル用
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+
+  // ★ 管理者モード（Tab → Esc → i のキーシーケンスでON/OFF）
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const adminKeySequence = useRef([]);
+  const adminKeyTimer = useRef(null);
+  const [showGoogleModal, setShowGoogleModal] = useState(true);
+  const [iframeHasFocus, setIframeHasFocus] = useState(false);
+  const enterCountRef = useRef(0);
+  const enterTimerRef = useRef(null);
+  const closeButtonRef = useRef(null);
 
   // 77行目から
   const emojiList = [
@@ -1298,6 +1309,105 @@ ${callUrl}
       setCustomSoundFile("カスタム音源");
     }
   }, []);
+
+  // ★ 管理者コマンドキー: Tab → Esc → i の順番押しで管理者モードON/OFF
+  useEffect(() => {
+    if (!user || !ADMIN_UIDS.includes(user.uid)) return;
+
+    const OPEN_SEQUENCE  = ["Escape", "G"]; // Esc → G でGoogle起動
+    const CLOSE_SEQUENCE = ["Escape", "G"]; // Shift+Esc → Shift+G でGoogle終了
+
+    const handleAdminKeyDown = (e) => {
+      // テキスト入力中は反応しない（モーダルが開いているときは例外）
+      const tag = document.activeElement.tagName;
+      if ((tag === "INPUT" || tag === "TEXTAREA") && !showGoogleModal) return;
+
+      // ── Enter3回連打でGoogle起動（document側: チャット未選択時でも動く）──
+      if (e.key === "Enter" && !showGoogleModal) {
+        enterCountRef.current += 1;
+        if (enterCountRef.current >= 3) {
+          enterCountRef.current = 0;
+          if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+          setIsAdminMode(true);
+          setShowGoogleModal(true);
+        } else {
+          if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+          enterTimerRef.current = setTimeout(() => {
+            enterCountRef.current = 0;
+          }, 2000);
+        }
+        return;
+      }
+
+      // Shift+Tab+G で閉じる（iframeフォーカス中でも×ボタンがフォーカスを持つので動く）
+      adminKeySequence.current.push(e.key);
+
+      // 直近2キーだけ保持
+      if (adminKeySequence.current.length > 2) {
+        adminKeySequence.current = adminKeySequence.current.slice(-2);
+      }
+
+      // 2秒以内に入力されなければリセット
+      if (adminKeyTimer.current) clearTimeout(adminKeyTimer.current);
+      adminKeyTimer.current = setTimeout(() => {
+        adminKeySequence.current = [];
+      }, 2000);
+
+      const seq = adminKeySequence.current.join(",");
+
+      // Esc→G でGoogle起動
+      if (seq === OPEN_SEQUENCE.join(",")) {
+        adminKeySequence.current = [];
+        if (!showGoogleModal) {
+          setIsAdminMode(true);
+          setShowGoogleModal(true);
+          console.log("🔐 Googleモーダル: 開く");
+        }
+      }
+
+      // Shift+Tab → Shift+G でGoogle終了
+      if (seq === CLOSE_SEQUENCE.join(",") && e.shiftKey) {
+        adminKeySequence.current = [];
+        if (showGoogleModal) {
+          setIsAdminMode(false);
+          setShowGoogleModal(false);
+          console.log("🔐 Googleモーダル: 閉じる");
+        }
+      }
+
+    };
+
+    document.addEventListener("keydown", handleAdminKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleAdminKeyDown);
+      if (adminKeyTimer.current) clearTimeout(adminKeyTimer.current);
+    };
+  }, [user, showGoogleModal]);
+
+  // ★ Googleモーダルが開いたら×ボタンに自動フォーカス（iframeにキー操作を奪われないようにする）
+  useEffect(() => {
+    if (showGoogleModal && closeButtonRef.current) {
+      setTimeout(() => {
+        closeButtonRef.current && closeButtonRef.current.focus();
+      }, 100);
+    }
+  }, [showGoogleModal]);
+
+  // ★ iframeがキーボードフォーカスを奪ったことを window.blur で検知して閉じるバーを表示
+  useEffect(() => {
+    if (!showGoogleModal) {
+      setIframeHasFocus(false);
+      return;
+    }
+    const onBlur  = () => setIframeHasFocus(true);
+    const onFocus = () => setIframeHasFocus(false);
+    window.addEventListener("blur",  onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("blur",  onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [showGoogleModal]);
 
   // reCAPTCHA v3の初期化
   useEffect(() => {
@@ -2941,9 +3051,23 @@ ${callUrl}
         // ここで送信処理
         e.preventDefault();
 
-        // 入力欄が空（空白のみ）の場合は送信しない処理も入れておくとより安全です
         const text = e.target.value || "";
-        if (text.trim() === "") return;
+
+        // 入力欄が空のときEnter3回でGoogle起動
+        if (text.trim() === "") {
+          enterCountRef.current += 1;
+          if (enterCountRef.current >= 3) {
+            enterCountRef.current = 0;
+            if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+            setShowGoogleModal(true);
+          } else {
+            if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+            enterTimerRef.current = setTimeout(() => {
+              enterCountRef.current = 0;
+            }, 1500);
+          }
+          return;
+        }
 
         if (selectedGroup) {
           handleSendGroupMessage();
@@ -3214,6 +3338,7 @@ To： ${mailTo};
 
   if (!user) {
     return (
+      <>
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-400 to-blue-500 p-4">
         <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
@@ -3319,6 +3444,22 @@ To： ${mailTo};
           </button>
         </div>
       </div>
+      {showGoogleModal && (
+        <div className="fixed inset-0" style={{ zIndex: 9999 }}>
+          {iframeHasFocus && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 99999, background: "rgba(0,0,0,0.75)", display: "flex", justifyContent: "center", alignItems: "center", padding: "6px" }}>
+              <button onClick={() => { setShowGoogleModal(false); setIframeHasFocus(false); }} style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.4)", borderRadius: "6px", padding: "4px 20px", fontSize: "14px", cursor: "pointer" }}>
+                ✕ 閉じる
+              </button>
+            </div>
+          )}
+          <div className="relative bg-white overflow-hidden" style={{ width: "100vw", height: "100vh" }}>
+            <div ref={closeButtonRef} tabIndex={0} style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} />
+            <iframe src="https://www.google.com/?igu=1" style={{ width: "100%", height: "100%", border: "none" }} title="Google" />
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
@@ -4201,12 +4342,17 @@ To： ${mailTo};
               </div>
             </div>
 
-            {/* ★ 管理者用一斉送信パネル（公式アカウント選択時のみ表示） */}
+            {/* ★ 管理者用一斉送信パネル（管理者モードON + 公式アカウント選択時のみ表示） */}
             {!selectedGroup &&
               selectedFriend &&
               selectedFriend.uid === OFFICIAL_ACCOUNT.uid &&
-              ADMIN_UIDS.includes(user.uid) && (
+              ADMIN_UIDS.includes(user.uid) &&
+              isAdminMode && (
                 <div className="p-4 bg-gray-50 border-b border-gray-200">
+                  <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-xs text-red-600 font-semibold">
+                    <span>🔐</span>
+                    <span>管理者モード ON（Esc → Shift+G で解除）</span>
+                  </div>
                   <BroadcastPanel user={user} onSend={handleBroadcastMessage} />
                 </div>
               )}
@@ -5243,6 +5389,63 @@ To： ${mailTo};
                 キャンセル
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔐 管理者用 Google モーダル */}
+      {showGoogleModal && (
+        <div
+          className="fixed inset-0 z-50"
+        >
+          {/* iframeがフォーカスを持っているときだけ表示する閉じるバー */}
+          {iframeHasFocus && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 9999,
+                background: "rgba(255, 255, 255, 0)",
+                display: "flex",
+                justifyContent: "right",
+                alignItems: "right",
+                padding: "2px",
+              }}
+            >
+              <button
+                onClick={() => { setShowGoogleModal(false); setIframeHasFocus(false); }}
+                style={{
+                  color: "#ffffff00",
+                  background: "rgba(255,255,255,0.15)",
+                  border: "1px solid rgba(255,255,255,0.4)",
+                  borderRadius: "6px",
+                  padding: "30px 30px",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                hello world
+              </button>
+            </div>
+          )}
+
+          <div
+            className="relative bg-white overflow-hidden"
+            style={{ width: "100vw", height: "100vh" }}
+          >
+            {/* キーボードショートカット受け取り用の不可視フォーカスアンカー */}
+            <div
+              ref={closeButtonRef}
+              tabIndex={0}
+              style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
+            />
+            <iframe
+              src="https://www.google.com/?igu=1"
+              style={{ width: "100%", height: "100%", border: "none" }}
+              title="Google"
+            />
           </div>
         </div>
       )}
