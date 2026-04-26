@@ -1314,9 +1314,6 @@ ${callUrl}
   useEffect(() => {
     if (!user || !ADMIN_UIDS.includes(user.uid)) return;
 
-    const OPEN_SEQUENCE  = ["Escape", "G"]; // Esc → G でGoogle起動
-    const CLOSE_SEQUENCE = ["Escape", "G"]; // Shift+Esc → Shift+G でGoogle終了
-
     const handleAdminKeyDown = (e) => {
       // テキスト入力中は反応しない（モーダルが開いているときは例外）
       const tag = document.activeElement.tagName;
@@ -1339,42 +1336,17 @@ ${callUrl}
         return;
       }
 
-      // Shift+Tab+G で閉じる（iframeフォーカス中でも×ボタンがフォーカスを持つので動く）
-      adminKeySequence.current.push(e.key);
-
-      // 直近2キーだけ保持
-      if (adminKeySequence.current.length > 2) {
-        adminKeySequence.current = adminKeySequence.current.slice(-2);
-      }
-
-      // 2秒以内に入力されなければリセット
-      if (adminKeyTimer.current) clearTimeout(adminKeyTimer.current);
-      adminKeyTimer.current = setTimeout(() => {
-        adminKeySequence.current = [];
-      }, 2000);
-
-      const seq = adminKeySequence.current.join(",");
-
-      // Esc→G でGoogle起動
-      if (seq === OPEN_SEQUENCE.join(",")) {
-        adminKeySequence.current = [];
-        if (!showGoogleModal) {
-          setIsAdminMode(true);
-          setShowGoogleModal(true);
-          console.log("🔐 Googleモーダル: 開く");
-        }
-      }
-
-      // Shift+Tab → Shift+G でGoogle終了
-      if (seq === CLOSE_SEQUENCE.join(",") && e.shiftKey) {
-        adminKeySequence.current = [];
+      // ── Alt+Shift+G で開く/閉じる ──
+      if (e.altKey && e.shiftKey && e.code === "KeyG") {
+        e.preventDefault();
         if (showGoogleModal) {
           setIsAdminMode(false);
           setShowGoogleModal(false);
-          console.log("🔐 Googleモーダル: 閉じる");
+        } else {
+          setIsAdminMode(true);
+          setShowGoogleModal(true);
         }
       }
-
     };
 
     document.addEventListener("keydown", handleAdminKeyDown);
@@ -3364,7 +3336,7 @@ To： ${mailTo};
             className="w-full bg-white border-2 border-gray-300 text-gray-700 rounded-lg py-3 font-semibold hover:bg-gray-50 transition-colors disabled:bg-gray-100 mb-4 flex items-center justify-center gap-2"
           >
             <GoogleIcon />
-            Googleでログイン<span class="google-develop">(開発中)</span>
+            Googleでログイン<span className="google-develop">(開発中)</span>
             <div className="flex flex-col items-start">
               <span className="text-xs text-gray-500">
                 現在は使用できません
@@ -3464,71 +3436,120 @@ To： ${mailTo};
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col custom-scrollbar">
-        <div className="p-4 bg-green-500 text-white">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <button
-                onClick={() => {
-                  setShowSettings(true);
-                  setSettingsView("profile");
-                  setNewUsername(username);
-                }}
-                className="hover:opacity-80 transition-opacity"
-                title="プロフィール設定"
-              >
-                <AvatarImage
-                  src={avatarUrl} // ← ★ここが重要
-                  alt="プロフィール"
-                  fallbackText={username ? username[0].toUpperCase() : "?"}
-                  size="w-10 h-10"
-                  bgColor="bg-white bg-opacity-30"
-                />
-              </button>
+    <>
+    <div className="flex h-screen" style={{background:'#313338'}}>
 
-              <div className="ml-3">
-                <h1 className="text-lg font-bold">{username}</h1>
-                <p className="text-xs opacity-90">{user.email}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {/* 通知設定ボタン */}
-              {notificationPermission !== "granted" && (
-                <button
-                  onClick={() => {
-                    if ("Notification" in window) {
-                      Notification.requestPermission().then((permission) => {
-                        setNotificationPermission(permission);
-                        if (permission === "granted") {
-                          alert("通知が有効になりました！");
-                          new Notification("通知テスト", {
-                            body: "これがデスクトップ通知です",
-                            icon: "💬",
-                          });
-                        } else {
-                          alert(
-                            "通知が拒否されました。ブラウザの設定から許可してください。",
-                          );
-                        }
-                      });
-                    }
-                  }}
-                  className="p-2 hover:bg-green-600 rounded-full transition-colors"
-                  title="通知を有効化"
-                >
-                  🔔
-                </button>
-              )}
-              <button
-                onClick={handleLogout}
-                className="p-2 hover:bg-green-600 rounded-full transition-colors"
-                title="ログアウト"
-              >
-                <LogOutIcon />
-              </button>
-            </div>
-          </div>
+      {/* ===== Discord風 アイコンレール ===== */}
+      <div style={{width:'72px',background:'#1e1f22',display:'flex',flexDirection:'column',alignItems:'center',padding:'8px 0',gap:'6px',flexShrink:0}}>
+
+        {/* DM / グループ 切り替えアイコン */}
+        <button
+          onClick={() => { setCurrentView("friends"); setSelectedGroup(null); }}
+          title="ダイレクトメッセージ"
+          style={{width:'48px',height:'48px',borderRadius:currentView==='friends'?'16px':'50%',background:currentView==='friends'?'#5865f2':'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',transition:'all 0.15s',position:'relative',flexShrink:0}}
+        >
+          💬
+          {(()=>{const t=Object.keys(unreadCounts).filter(k=>k.startsWith('friend-')).reduce((s,k)=>s+(unreadCounts[k]||0),0);return t>0?<span style={{position:'absolute',top:'-4px',right:'-4px',background:'#ed4245',color:'white',borderRadius:'50%',minWidth:'16px',height:'16px',fontSize:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'bold',padding:'0 2px'}}>{t>99?'99+':t}</span>:null;})()}
+        </button>
+        <button
+          onClick={() => { setCurrentView("groups"); setSelectedFriend(null); }}
+          title="グループ"
+          style={{width:'48px',height:'48px',borderRadius:currentView==='groups'?'16px':'50%',background:currentView==='groups'?'#5865f2':'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',transition:'all 0.15s',position:'relative',flexShrink:0}}
+        >
+          👥
+          {(()=>{const t=Object.keys(unreadCounts).filter(k=>k.startsWith('group-')).reduce((s,k)=>s+(unreadCounts[k]||0),0);return t>0?<span style={{position:'absolute',top:'-4px',right:'-4px',background:'#ed4245',color:'white',borderRadius:'50%',minWidth:'16px',height:'16px',fontSize:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'bold',padding:'0 2px'}}>{t>99?'99+':t}</span>:null;})()}
+        </button>
+
+        {/* 友達追加 / グループ作成 */}
+        <button
+          onClick={() => { if(currentView==='friends'){setShowAddFriend(true);setSearchMode('list');loadAllUsers();}else{setShowCreateGroup(true);}}}
+          title={currentView==='friends'?'友達を追加':'グループ作成'}
+          style={{width:'48px',height:'48px',borderRadius:'50%',background:'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',transition:'all 0.15s',flexShrink:0}}
+        >➕</button>
+
+        {/* 区切り線 */}
+        <div style={{width:'32px',height:'2px',background:'#4e5058',borderRadius:'1px',flexShrink:0}} />
+
+        {/* ===== 友達 / グループ アバター一覧（スクロール可） ===== */}
+        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',width:'100%',paddingBottom:'4px'}} className="custom-scrollbar">
+          {currentView === 'friends'
+            ? [...friends].sort((a,b)=>(lastMessages[b.uid]?.timestamp||0)-(lastMessages[a.uid]?.timestamp||0)).map((friend,i)=>{
+                const unread = unreadCounts[`friend-${friend.uid}`]||0;
+                const isSelected = selectedFriend?.uid === friend.uid;
+                return (
+                  <div key={i} style={{position:'relative',flexShrink:0}}>
+                    <button
+                      onClick={()=>{setSelectedGroup(null);setMessages([]);setSelectedFriend(friend);setUnreadCounts(prev=>({...prev,[`friend-${friend.uid}`]:0}));}}
+                      title={friend.username}
+                      style={{width:'48px',height:'48px',borderRadius:isSelected?'16px':'50%',border:isSelected?'2px solid #5865f2':'2px solid transparent',cursor:'pointer',padding:0,background:'#36393f',overflow:'hidden',transition:'all 0.15s',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}
+                    >
+                      {friend.isOfficial ? (
+                        <div style={{width:'48px',height:'48px',display:'flex',alignItems:'center',justifyContent:'center'}}><OfficialAvatarIcon /></div>
+                      ) : friend.photoURL?.startsWith('http') ? (
+                        <img src={friend.photoURL} alt={friend.username} style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                      ) : (
+                        <span style={{color:'white',fontWeight:'bold',fontSize:'18px'}}>{(friend.username??'?').charAt(0).toUpperCase()}</span>
+                      )}
+                    </button>
+                    {unread > 0 && <span style={{position:'absolute',top:'-4px',right:'-4px',background:'#ed4245',color:'white',borderRadius:'50%',minWidth:'16px',height:'16px',fontSize:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'bold',padding:'0 2px'}}>{unread>99?'99+':unread}</span>}
+                  </div>
+                );
+              })
+            : [...groups].sort((a,b)=>(lastGroupMessages[b.groupId]?.timestamp||0)-(lastGroupMessages[a.groupId]?.timestamp||0)).map((group,i)=>{
+                const unread = unreadCounts[`group-${group.groupId}`]||0;
+                const isSelected = selectedGroup?.groupId === group.groupId;
+                return (
+                  <div key={i} style={{position:'relative',flexShrink:0}}>
+                    <button
+                      onClick={()=>{setSelectedFriend(null);setMessages([]);setSelectedGroup(group);setUnreadCounts(prev=>({...prev,[`group-${group.groupId}`]:0}));}}
+                      title={group.name}
+                      style={{width:'48px',height:'48px',borderRadius:isSelected?'16px':'50%',border:isSelected?'2px solid #5865f2':'2px solid transparent',cursor:'pointer',padding:0,background:'#5865f2',overflow:'hidden',transition:'all 0.15s',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}
+                    >
+                      {group.groupPhotoURL?.startsWith('http') ? (
+                        <img src={group.groupPhotoURL} alt={group.name} style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                      ) : (
+                        <span style={{color:'white',fontWeight:'bold',fontSize:'16px'}}>👥</span>
+                      )}
+                    </button>
+                    {unread > 0 && <span style={{position:'absolute',top:'-4px',right:'-4px',background:'#ed4245',color:'white',borderRadius:'50%',minWidth:'16px',height:'16px',fontSize:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'bold',padding:'0 2px'}}>{unread>99?'99+':unread}</span>}
+                  </div>
+                );
+              })
+          }
+        </div>
+
+        {/* 設定 */}
+        <button
+          onClick={() => { setShowSettings(true); setSettingsView("profile"); setNewUsername(username); }}
+          title="設定"
+          style={{width:'40px',height:'40px',borderRadius:'50%',background:'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}
+        >⚙️</button>
+
+        {/* 通知ボタン */}
+        {notificationPermission !== "granted" && (
+          <button
+            onClick={() => { if("Notification" in window){Notification.requestPermission().then(p=>{setNotificationPermission(p);if(p==="granted"){alert("通知が有効になりました！");new Notification("通知テスト",{body:"これがデスクトップ通知です",icon:"💬"});}else{alert("通知が拒否されました。ブラウザの設定から許可してください。");}});}}}
+            title="通知を有効化"
+            style={{width:'40px',height:'40px',borderRadius:'50%',background:'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}
+          >🔔</button>
+        )}
+
+        {/* ログアウト */}
+        <button
+          onClick={handleLogout}
+          title="ログアウト"
+          style={{width:'40px',height:'40px',borderRadius:'50%',background:'#36393f',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#ed4245',flexShrink:0}}
+        ><LogOutIcon /></button>
+
+        {/* 自分のアバター */}
+        <button
+          onClick={() => { setShowSettings(true); setSettingsView("profile"); setNewUsername(username); }}
+          title={username}
+          style={{borderRadius:'50%',border:'2px solid #5865f2',cursor:'pointer',padding:0,background:'transparent',flexShrink:0,marginBottom:'4px'}}
+        >
+          <AvatarImage src={avatarUrl} alt="プロフィール" fallbackText={username?username[0].toUpperCase():"?"} size="w-10 h-10" bgColor="bg-white bg-opacity-30" />
+        </button>
+      </div>
 
           {/* 統合設定モーダル */}
           {showSettings && (
@@ -3917,331 +3938,6 @@ To： ${mailTo};
             </div>
           )}
 
-          {/* タブ切り替え */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => {
-                setCurrentView("friends");
-                setSelectedGroup(null);
-              }}
-              className={`relative flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === "friends"
-                  ? "bg-white text-green-600"
-                  : "bg-green-600 text-white hover:bg-green-700"
-              }`}
-            >
-              友達
-              {(() => {
-                const totalUnread = Object.keys(unreadCounts)
-                  .filter((key) => key.startsWith("friend-"))
-                  .reduce((sum, key) => sum + (unreadCounts[key] || 0), 0);
-                return totalUnread > 0 ? (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </span>
-                ) : null;
-              })()}
-            </button>
-            <button
-              onClick={() => {
-                setCurrentView("groups");
-                setSelectedFriend(null);
-              }}
-              className={`relative flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === "groups"
-                  ? "bg-white text-green-600"
-                  : "bg-green-600 text-white hover:bg-green-700"
-              }`}
-            >
-              グループ
-              {(() => {
-                const totalUnread = Object.keys(unreadCounts)
-                  .filter((key) => key.startsWith("group-"))
-                  .reduce((sum, key) => sum + (unreadCounts[key] || 0), 0);
-                return totalUnread > 0 ? (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </span>
-                ) : null;
-              })()}
-            </button>
-          </div>
-
-          <button
-            onClick={() => {
-              if (currentView === "friends") {
-                setShowAddFriend(true);
-                setSearchMode("list"); // 一覧モードに設定
-                loadAllUsers(); // ユーザー一覧を読み込み
-              } else {
-                setShowCreateGroup(true);
-              }
-            }}
-            className="w-full bg-white text-green-600 py-2 px-4 rounded-lg font-semibold hover:bg-green-50 transition-colors flex items-center justify-center"
-          >
-            <span className="mr-2">
-              <UserPlusIcon />
-            </span>
-            {currentView === "friends" ? "友達を追加" : "グループ作成"}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {currentView === "friends" ? (
-            // 既存の友達リスト表示コード
-            friends.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                <div className="flex justify-center mb-4 opacity-50">
-                  <MessageCircleIcon size={48} />
-                </div>
-                <p>友達がいません</p>
-                <p className="text-sm mt-2">
-                  上のボタンから
-                  <br />
-                  友達を追加しましょう
-                </p>
-              </div>
-            ) : (
-              [...friends]
-                .sort((a, b) => {
-                  // 最後のメッセージのタイムスタンプを取得
-                  const timeA =
-                    lastMessages[a.uid]?.timestamp || a.addedAt || 0;
-                  const timeB =
-                    lastMessages[b.uid]?.timestamp || b.addedAt || 0;
-                  // 新しい順（降順）にソート
-                  return timeB - timeA;
-                })
-
-                .map((friend, index) => {
-                  const unreadCount = unreadCounts[`friend-${friend.uid}`] || 0;
-                  const lastMsg = lastMessages[friend.uid];
-
-                  return (
-                    <div
-                      key={index}
-                      onClick={() => {
-                        setSelectedGroup(null);
-                        setMessages([]);
-                        setSelectedFriend(friend);
-                        setUnreadCounts((prev) => ({
-                          ...prev,
-                          [`friend-${friend.uid}`]: 0,
-                        }));
-                      }}
-                      className={`group p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        selectedFriend?.uid === friend.uid ? "bg-gray-100" : ""
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center flex-1 min-w-0">
-                            {/* アバター画像の表示 */}
-                            {friend.isOfficial ? (
-                              // 公式アカウントの場合はSVGアイコン
-                              <div className="w-12 h-12 flex-shrink-0">
-                                <OfficialAvatarIcon />
-                              </div>
-                            ) : friend.photoURL &&
-                              friend.photoURL.startsWith("http") ? (
-                              // 通常ユーザーで画像URLがある場合
-                              <img
-                                src={friend.photoURL}
-                                alt={friend.username}
-                                className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                                onError={(e) => {
-                                  e.target.style.display = "none";
-                                  e.target.nextElementSibling.style.display =
-                                    "flex";
-                                }}
-                              />
-                            ) : null}
-
-                            {/* フォールバック: 文字アイコン */}
-                            <div
-                              className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
-                              style={{
-                                display:
-                                  friend.isOfficial ||
-                                  (friend.photoURL &&
-                                    friend.photoURL.startsWith("http"))
-                                    ? "none"
-                                    : "flex",
-                              }}
-                            >
-                              {(friend.username ?? "?").charAt(0).toUpperCase()}
-                            </div>
-
-                            <div className="ml-3 flex-1 min-w-0">
-                              <h3 className="font-semibold text-gray-800 flex items-center gap-1">
-                                {friend.username}
-                                {friend.isOfficial && <OfficialBadgeIcon />}
-                              </h3>
-                              <p className="text-sm text-gray-500 truncate">
-                                {lastMsg
-                                  ? lastMsg.type === "image"
-                                    ? lastMsg.sender === user.uid
-                                      ? "📷 画像を送信しました"
-                                      : "📷 画像を受信しました"
-                                    : isEmojiOnly(lastMsg.text)
-                                      ? lastMsg.sender === user.uid
-                                        ? "スタンプを送信しました"
-                                        : "スタンプを受信しました"
-                                      : (lastMsg.text || "").substring(0, 25) +
-                                        ((lastMsg.text || "").length > 25
-                                          ? "..."
-                                          : "")
-                                  : "タップしてチャット"}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end ml-2">
-                          <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
-                            {formatChatListDate(
-                              lastMessages[friend.uid]?.timestamp,
-                            )}
-                          </span>
-
-                          {unreadCount > 0 && (
-                            <div className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                              {unreadCount > 99 ? "99+" : unreadCount}
-                            </div>
-                          )}
-
-                          {/* 削除ボタン（公式アカウント以外・ホバー時に表示） */}
-                          {!friend.isOfficial && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveFriend(friend);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-xs text-red-400 hover:text-red-600 px-1"
-                              title="友達を削除"
-                            >
-                              🗑️
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-            )
-          ) : // グループリスト表示
-          groups.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <div className="flex justify-center mb-4 opacity-50">
-                <MessageCircleIcon size={48} />
-              </div>
-              <p>グループがありません</p>
-              <p className="text-sm mt-2">
-                上のボタンから
-                <br />
-                グループを作成しましょう
-              </p>
-            </div>
-          ) : (
-            [...groups]
-              .sort((a, b) => {
-                // 最後のメッセージのタイムスタンプを取得
-                const timeA =
-                  lastGroupMessages[a.groupId]?.timestamp || a.createdAt || 0;
-                const timeB =
-                  lastGroupMessages[b.groupId]?.timestamp || b.createdAt || 0;
-                // 新しい順（降順）にソート
-                return timeB - timeA;
-              })
-
-              .map((group, index) => {
-                const unreadCount = unreadCounts[`group-${group.groupId}`] || 0;
-                const lastMsg = lastGroupMessages[group.groupId];
-
-                return (
-                  <div
-                    key={index}
-                    onClick={() => {
-                      setSelectedFriend(null);
-                      setMessages([]);
-                      setSelectedGroup(group);
-                      setUnreadCounts((prev) => ({
-                        ...prev,
-                        [`group-${group.groupId}`]: 0,
-                      }));
-                    }}
-                    className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      selectedGroup?.groupId === group.groupId
-                        ? "bg-gray-100"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0">
-                        <div className="flex items-center flex-1">
-                          <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                            <AvatarImage
-                              src={group.groupPhotoURL}
-                              alt={group.name}
-                              fallbackText="👥"
-                              size="w-12 h-12"
-                              bgColor="bg-purple-500"
-                            />
-                          </div>
-
-                          {/* メッセージ表示エリア */}
-                          <div className="ml-3 flex-1 min-w-0">
-                            <h3 className="font-semibold text-gray-800">
-                              {group.name}
-                            </h3>
-
-                            {/* 最後のメッセージを表示 */}
-                            {lastMsg ? (
-                              <div className="flex items-center text-sm text-gray-500 min-w-0">
-                                {/* 送信者のアイコン */}
-                                <div className="w-5 h-5 rounded-full bg-blue-400 flex items-center justify-center text-white text-xs font-bold mr-2 flex-shrink-0">
-                                  {lastMsg.senderName
-                                    ? lastMsg.senderName.charAt(0).toUpperCase()
-                                    : "?"}
-                                </div>
-                                {/* メッセージ内容 */}
-                                <p className="truncate">
-                                  {lastMsg.type === "image"
-                                    ? "📷 画像を送信しました"
-                                    : isEmojiOnly(lastMsg.text)
-                                      ? `スタンプを送信しました`
-                                      : `${lastMsg.text || ""}`}
-                                </p>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500">
-                                {Object.keys(group.members || {}).length}
-                                人のメンバー {/* ← ここは group で正しい */}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end ml-2">
-                        <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
-                          {formatChatListDate(
-                            lastGroupMessages[group.groupId]?.timestamp,
-                          )}
-                        </span>
-
-                        {/* 未読バッジ */}
-                        {unreadCount > 0 && (
-                          <div className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold ml-2 flex-shrink-0">
-                            {unreadCount > 99 ? "99+" : unreadCount}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-          )}
-        </div>
-      </div>
       <div className="flex-1 flex flex-col">
         {selectedFriend || selectedGroup ? (
           <>
@@ -4702,7 +4398,6 @@ To： ${mailTo};
             </div>
           </div>
         )}
-      </div>
 
       {showAddFriend && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -5407,26 +5102,26 @@ To： ${mailTo};
                 left: 0,
                 right: 0,
                 zIndex: 9999,
-                background: "rgba(255, 255, 255, 0)",
+                background: "rgba(0,0,0,0.75)",
                 display: "flex",
-                justifyContent: "right",
-                alignItems: "right",
-                padding: "2px",
+                justifyContent: "center",
+                alignItems: "center",
+                padding: "6px",
               }}
             >
               <button
                 onClick={() => { setShowGoogleModal(false); setIframeHasFocus(false); }}
                 style={{
-                  color: "#ffffff00",
+                  color: "#fff",
                   background: "rgba(255,255,255,0.15)",
                   border: "1px solid rgba(255,255,255,0.4)",
                   borderRadius: "6px",
-                  padding: "30px 30px",
+                  padding: "4px 20px",
                   fontSize: "14px",
                   cursor: "pointer",
                 }}
               >
-                hello world
+                ✕ 閉じる
               </button>
             </div>
           )}
@@ -5449,7 +5144,9 @@ To： ${mailTo};
           </div>
         </div>
       )}
-    </div>
+    </div>    {/* flex-1 flex flex-col */}
+    </div>    {/* flex h-screen */}
+    </>
   );
 }
 
