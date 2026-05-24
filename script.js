@@ -604,6 +604,7 @@ function MessagingApp() {
   const adminKeyTimer = useRef(null);
   const [showGoogleModal, setShowGoogleModal] = useState(true);
   const [iframeHasFocus, setIframeHasFocus] = useState(false);
+  const [showPinAuth, setShowPinAuth] = useState(false);  // ← これを追加
   const enterCountRef = useRef(0);
   const enterTimerRef = useRef(null);
   const closeButtonRef = useRef(null);
@@ -1804,6 +1805,9 @@ ${callUrl}
     }
     setLoading(false);
   };
+
+  // face-api モデルの読み込み
+
 
   const handleAddFriendFromList = async (friendData) => {
     setLoading(true);
@@ -3311,13 +3315,9 @@ To： ${mailTo};
   if (!user) {
     return (
       <>
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-400 to-blue-500 p-4">
+      <div className="flex items-center justify-center min-h-screen p-4">
         <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="w-20 h-20 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-3xl font-bold">
-              💬
-            </div>
-            <h1 className="text-3xl font-bold text-gray-800">Chatly</h1>
             <p className="text-gray-600 mt-2">
               {isSignUp ? "アカウントを作成" : "ログイン"}
             </p>
@@ -3336,11 +3336,8 @@ To： ${mailTo};
             className="w-full bg-white border-2 border-gray-300 text-gray-700 rounded-lg py-3 font-semibold hover:bg-gray-50 transition-colors disabled:bg-gray-100 mb-4 flex items-center justify-center gap-2"
           >
             <GoogleIcon />
-            Googleでログイン<span className="google-develop">(開発中)</span>
+            Googleでログイン<span className="google-develop"></span>
             <div className="flex flex-col items-start">
-              <span className="text-xs text-gray-500">
-                現在は使用できません
-              </span>
             </div>
           </button>
 
@@ -3415,22 +3412,7 @@ To： ${mailTo};
               : "アカウントを作成"}
           </button>
         </div>
-      </div>
-      {showGoogleModal && (
-        <div className="fixed inset-0" style={{ zIndex: 9999 }}>
-          {iframeHasFocus && (
-            <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 99999, background: "rgba(0,0,0,0.75)", display: "flex", justifyContent: "center", alignItems: "center", padding: "6px" }}>
-              <button onClick={() => { setShowGoogleModal(false); setIframeHasFocus(false); }} style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.4)", borderRadius: "6px", padding: "4px 20px", fontSize: "14px", cursor: "pointer" }}>
-                ✕ 閉じる
-              </button>
-            </div>
-          )}
-          <div className="relative bg-white overflow-hidden" style={{ width: "100vw", height: "100vh" }}>
-            <div ref={closeButtonRef} tabIndex={0} style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} />
-            <iframe src="https://www.google.com/?igu=1" style={{ width: "100%", height: "100%", border: "none" }} title="Google" />
-          </div>
-        </div>
-      )}
+     </div>
       </>
     );
   }
@@ -5089,54 +5071,82 @@ To： ${mailTo};
       )}
 
       {/* 🔐 管理者用 Google モーダル */}
-      {/* 🔐 管理者用 Google モーダル */}
 {showGoogleModal && (
   <div className="fixed inset-0 z-50">
-    
-    {/* ← 常に表示（iframeHasFocus条件を削除） */}
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 9999,
-        background: "rgba(0,0,0,0.75)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "6px",
-      }}
-    >
-      <button
-        onMouseDown={() => { setShowGoogleModal(false); setIframeHasFocus(false); }}
-        // ↑ onClick ではなく onMouseDown にする（フォーカスイベントより先に発火させるため）
-        style={{
-          color: "#fff",
-          background: "rgba(255,255,255,0.15)",
-          border: "1px solid rgba(255,255,255,0.4)",
-          borderRadius: "6px",
-          padding: "4px 20px",
-          fontSize: "14px",
-          cursor: "pointer",
-        }}
-      >
-        ✕ 閉じる
-      </button>
-    </div>
 
-    <div
-      className="relative bg-white overflow-hidden"
-      style={{ width: "100vw", height: "100vh", paddingTop: "36px" }} // ← バー分だけ押し下げ
-    >
-      <iframe
-        src="https://www.google.com/?igu=1"
-        style={{ width: "100%", height: "100%", border: "none" }}
-        title="Google"
-      />
+    <button
+  onMouseDown={() => setShowPinAuth(true)}
+  style={{
+    position: "fixed",
+    top: "8px",
+    right: "8px",
+    zIndex: 9999,
+    width: "28px",
+    height: "28px",
+    background: "rgba(255,255,255,0.01)",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    color: "rgba(32, 108, 213, 0.46)",
+    fontSize: "12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  ✕
+</button>
+
+    {/* iframeの代わりにスクショ画像を表示 */}
+    <div style={{ width: "100vw", height: "100%", overflow: "auto" }}>
+      <img
+  src="google.png"
+  alt="Google"
+  style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
+/>
     </div>
   </div>
 )}
+
+{/* PIN認証モーダル */}
+{showPinAuth && (
+  <div style={{
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
+    zIndex: 99999, display: "flex", flexDirection: "column",
+    alignItems: "center", justifyContent: "center", gap: "16px"
+  }}>
+    <p style={{ color: "white", fontSize: "18px", margin: 0 }}>OPEN PIN</p>
+    <input
+      type="password"
+      maxLength={6}
+      autoFocus
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          if (e.target.value === "123617" || e.target.value === "327823") {  // ← 好きな数字に変更
+            setShowPinAuth(false);
+            setShowGoogleModal(false);
+            setIframeHasFocus(false);
+          } else {
+            alert("PINが違います");
+            e.target.value = "";
+          }
+        }
+      }}
+      style={{
+        fontSize: "24px", textAlign: "center", letterSpacing: "8px",
+        padding: "12px 20px", borderRadius: "8px", border: "none",
+        width: "300px"
+      }}
+      placeholder="●●●●●●"
+    />
+    <button onClick={() => setShowPinAuth(false)}
+      style={{ color: "rgba(255,255,255,0.5)", background: "none",
+        border: "none", cursor: "pointer", fontSize: "14px" }}>
+      キャンセル
+    </button>
+  </div>
+)}
+
     </div>    {/* flex-1 flex flex-col */}
     </div>    {/* flex h-screen */}
     </>
