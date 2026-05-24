@@ -5089,61 +5089,54 @@ To： ${mailTo};
       )}
 
       {/* 🔐 管理者用 Google モーダル */}
-      {showGoogleModal && (
-        <div
-          className="fixed inset-0 z-50"
-        >
-          {/* iframeがフォーカスを持っているときだけ表示する閉じるバー */}
-          {iframeHasFocus && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 9999,
-                background: "rgba(0,0,0,0.75)",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: "6px",
-              }}
-            >
-              <button
-                onClick={() => { setShowGoogleModal(false); setIframeHasFocus(false); }}
-                style={{
-                  color: "#fff",
-                  background: "rgba(255,255,255,0.15)",
-                  border: "1px solid rgba(255,255,255,0.4)",
-                  borderRadius: "6px",
-                  padding: "4px 20px",
-                  fontSize: "14px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕ 閉じる
-              </button>
-            </div>
-          )}
+      {/* 🔐 管理者用 Google モーダル */}
+{showGoogleModal && (
+  <div className="fixed inset-0 z-50">
+    
+    {/* ← 常に表示（iframeHasFocus条件を削除） */}
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "6px",
+      }}
+    >
+      <button
+        onMouseDown={() => { setShowGoogleModal(false); setIframeHasFocus(false); }}
+        // ↑ onClick ではなく onMouseDown にする（フォーカスイベントより先に発火させるため）
+        style={{
+          color: "#fff",
+          background: "rgba(255,255,255,0.15)",
+          border: "1px solid rgba(255,255,255,0.4)",
+          borderRadius: "6px",
+          padding: "4px 20px",
+          fontSize: "14px",
+          cursor: "pointer",
+        }}
+      >
+        ✕ 閉じる
+      </button>
+    </div>
 
-          <div
-            className="relative bg-white overflow-hidden"
-            style={{ width: "100vw", height: "100vh" }}
-          >
-            {/* キーボードショートカット受け取り用の不可視フォーカスアンカー */}
-            <div
-              ref={closeButtonRef}
-              tabIndex={0}
-              style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
-            />
-            <iframe
-              src="https://www.google.com/?igu=1"
-              style={{ width: "100%", height: "100%", border: "none" }}
-              title="Google"
-            />
-          </div>
-        </div>
-      )}
+    <div
+      className="relative bg-white overflow-hidden"
+      style={{ width: "100vw", height: "100vh", paddingTop: "36px" }} // ← バー分だけ押し下げ
+    >
+      <iframe
+        src="https://www.google.com/?igu=1"
+        style={{ width: "100%", height: "100%", border: "none" }}
+        title="Google"
+      />
+    </div>
+  </div>
+)}
     </div>    {/* flex-1 flex flex-col */}
     </div>    {/* flex h-screen */}
     </>
