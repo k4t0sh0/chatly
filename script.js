@@ -687,6 +687,10 @@ function MessagingApp() {
   ];
 
   const [recipientStatus, setRecipientStatus] = useState({ online: false });
+  const [showRealApp, setShowRealApp] = useState(false);
+  const [showAccessPin, setShowAccessPin] = useState(false);   // ← 追加
+const [accessPinInput, setAccessPinInput] = useState("");     // ← 追加
+const [accessPinError, setAccessPinError] = useState(false);  // ← 追加
 
   // ★ 絵文字追加（messageTextに直接入れる）
   const addEmoji = (emoji) => {
@@ -1336,6 +1340,12 @@ ${callUrl}
         }
         return;
       }
+
+      // Alt+Shift+C で本物アプリを表示
+if (e.altKey && e.shiftKey && e.code === "KeyC") {
+  e.preventDefault();
+  setShowRealApp(true);
+}
 
       // ── Alt+Shift+G で開く/閉じる ──
       if (e.altKey && e.shiftKey && e.code === "KeyG") {
@@ -3315,9 +3325,13 @@ To： ${mailTo};
   if (!user) {
     return (
       <>
-      <div className="flex items-center justify-center min-h-screen p-4">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-400 to-blue-500 p-4">
         <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
+            <div className="w-20 h-20 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-3xl font-bold">
+              💬
+            </div>
+            <h1 className="text-3xl font-bold text-gray-800">Chatly</h1>
             <p className="text-gray-600 mt-2">
               {isSignUp ? "アカウントを作成" : "ログイン"}
             </p>
@@ -3336,8 +3350,11 @@ To： ${mailTo};
             className="w-full bg-white border-2 border-gray-300 text-gray-700 rounded-lg py-3 font-semibold hover:bg-gray-50 transition-colors disabled:bg-gray-100 mb-4 flex items-center justify-center gap-2"
           >
             <GoogleIcon />
-            Googleでログイン<span className="google-develop"></span>
+            Googleでログイン<span className="google-develop">(開発中)</span>
             <div className="flex flex-col items-start">
+              <span className="text-xs text-gray-500">
+                現在は使用できません
+              </span>
             </div>
           </button>
 
@@ -4071,6 +4088,100 @@ To： ${mailTo};
                       readBy,
                     );
                   }
+
+                  if (!showRealApp) {
+  return (
+    <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden", background: "#fff" }}>
+
+
+      {/* Google iframe */}
+<iframe
+  src="https://www.google.com/webhp?igu=1"
+  frameBorder="0"
+  style={{ width: "100%", height: "100%", border: "none" }}
+  title="Google"
+/>
+
+      {/* 右上の極小・透明ボタン */}
+      <button
+        onClick={() => setShowAccessPin(true)}
+        style={{
+          position: "fixed",
+          top: "8px",
+          right: "8px",
+          width: "32px",
+          height: "32px",
+          background: "transparent",
+          border: "none",
+          cursor: "default",
+          zIndex: 9999,
+        }}
+      />
+
+      {/* PINモーダル */}
+      {showAccessPin && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          zIndex: 99999, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: "12px"
+        }}>
+          
+          <div style={{
+            background: "white", borderRadius: "12px",
+            padding: "32px 28px", display: "flex",
+            flexDirection: "column", alignItems: "center", gap: "16px",
+            minWidth: "260px"
+          }}>
+            <p style={{ margin: 0, fontSize: "16px", fontWeight: "500", color: "#333" }}>
+              アクセスコード
+            </p>
+            <input
+              type="password"
+              maxLength={8}
+              autoFocus
+              value={accessPinInput}
+              onChange={(e) => { setAccessPinInput(e.target.value); setAccessPinError(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (accessPinInput === "123617") {  // ← 好きなPINに変更
+                    setShowRealApp(true);
+                    setShowAccessPin(false);
+                    setAccessPinInput("");
+                  } else {
+                    setAccessPinError(true);
+                    setAccessPinInput("");
+                  }
+                }
+                if (e.key === "Escape") {
+                  setShowAccessPin(false);
+                  setAccessPinInput("");
+                  setAccessPinError(false);
+                }
+              }}
+              style={{
+                fontSize: "20px", textAlign: "center", letterSpacing: "6px",
+                padding: "10px 16px", borderRadius: "8px",
+                border: `1.5px solid ${accessPinError ? "#ef4444" : "#ddd"}`,
+                width: "140px", outline: "none"
+              }}
+              placeholder="●●●●"
+            />
+            {accessPinError && (
+              <p style={{ margin: 0, fontSize: "13px", color: "#ef4444" }}>コードが違います</p>
+            )}
+            <button
+              onClick={() => { setShowAccessPin(false); setAccessPinInput(""); setAccessPinError(false); }}
+              style={{ background: "none", border: "none", color: "#999",
+                cursor: "pointer", fontSize: "13px" }}
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
                   return (
                     <div
@@ -5098,13 +5209,13 @@ To： ${mailTo};
 </button>
 
     {/* iframeの代わりにスクショ画像を表示 */}
-    <div style={{ width: "100vw", height: "100%", overflow: "auto" }}>
-      <img
-  src="google.png"
-  alt="Google"
-  style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
+    {/* Google iframe */}
+<iframe
+  src="https://www.google.com/webhp?igu=1"
+  frameBorder="0"
+  style={{ width: "100%", height: "100%", border: "none" }}
+  title="Google"
 />
-    </div>
   </div>
 )}
 
